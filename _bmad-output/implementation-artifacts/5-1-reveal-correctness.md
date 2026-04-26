@@ -4,7 +4,7 @@ story_key: '5-1-reveal-correctness'
 epic: 5
 story_number: 1
 title: 'Reveal Correctness'
-status: 'ready-for-dev'
+status: 'done'
 sprint: 4
 priority: 1
 estimated_hours: 3

@@ -70,7 +70,7 @@ development_status:
 
   # Epic 5: Round Resolution
   epic-5: in-progress
-  5-1-reveal-correctness: ready-for-dev
+  5-1-reveal-correctness: done
   5-2-lock-correct-placements: ready-for-dev
   5-3-next-round-transition: ready-for-dev
   5-4-timeout-handling: ready-for-dev

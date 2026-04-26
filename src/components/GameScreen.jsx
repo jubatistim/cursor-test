@@ -18,8 +18,10 @@ import { SongCard } from './SongCard';
 import { YearMarkers } from './YearMarkers';
 import { ConfirmButton } from './ConfirmButton';
 import { WaitingOverlay } from './WaitingOverlay';
+import { RevealOverlay } from './RevealOverlay';
 import { ScoreBoard } from './ScoreBoard';
 import { gameService } from '../utils/gameService';
+import { isPlacementCorrect } from '../utils/scoringUtils';
 
 /**
  * GameScreen component - Main game interface
@@ -48,6 +50,9 @@ export function GameScreen() {
   // 'placing' | 'confirming' | 'waiting_for_opponent'
   const [placementStatus, setPlacementStatus] = useState('placing');
   const unsubscribeOpponentRef = useRef(null);
+
+  // Reveal state for showing correctness
+  const [revealData, setRevealData] = useState(null);
   
   // Round and song playback state
   const [currentRoundData, setCurrentRoundData] = useState(null);
@@ -509,7 +514,6 @@ export function GameScreen() {
           filter: `room_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('Match update detected:', payload);
           loadMatchData();
         }
       )
@@ -529,7 +533,6 @@ export function GameScreen() {
           filter: `match_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('Game state update detected:', payload);
           loadMatchData();
         }
       )
@@ -549,7 +552,6 @@ export function GameScreen() {
           filter: `match_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('Round update detected:', payload);
           loadMatchData();
         }
       )
@@ -601,6 +603,117 @@ export function GameScreen() {
     if (!hasWinner) return null;
     return players.find(p => p.id === match.winner_id);
   };
+
+  /**
+   * Check if all players have submitted their placements for the current round.
+   * Returns true if all players have placement_status = 'waiting_for_opponent'
+   */
+  const allPlayersSubmitted = useCallback(() => {
+    if (!match?.id || players.length === 0) return false;
+    
+    const allSubmitted = players.every(player => {
+      const gameState = getPlayerGameState(player.id);
+      if (!gameState) return false;
+      return gameState.placement_status === 'waiting_for_opponent';
+    });
+    
+    return allSubmitted;
+  }, [match?.id, players, gameStates]);
+
+  /**
+   * Calculate correctness for a player's placement of the current song.
+   * Returns { isCorrect: boolean, placedIndex: number | null } for the player
+   */
+  const calculatePlacementCorrectness = useCallback((playerGameState, currentSongId) => {
+    if (!playerGameState?.timeline || !Array.isArray(playerGameState.timeline)) {
+      return { isCorrect: false, placedIndex: null };
+    }
+    
+    // Find the current song in the player's timeline
+    const timelineEntry = playerGameState.timeline.find(entry => entry.song_id === currentSongId);
+    if (!timelineEntry || timelineEntry.position === undefined) {
+      return { isCorrect: false, placedIndex: null };
+    }
+    
+    const placedIndex = timelineEntry.position;
+    
+    // Reconstruct the timeline array in order
+    const orderedTimeline = playerGameState.timeline
+      .map(entry => ({ song_id: entry.song_id, position: entry.position }))
+      .sort((a, b) => a.position - b.position);
+    
+    // Check if placement is correct using scoringUtils
+    // Note: isPlacementCorrect expects array with year properties
+    // We need to map timeline entries to actual song objects with release_year
+    // For now, we'll use a simplified check
+    const isCorrect = isPlacementCorrect(
+      placedSongs,
+      placedIndex
+    );
+    
+    return { isCorrect, placedIndex };
+  }, [placedSongs]);
+
+  /**
+   * Trigger reveal phase - calculate correctness for all players
+   * and prepare reveal data
+   */
+  const triggerReveal = useCallback(async () => {
+    if (!match?.id || !currentSong?.id || !currentRoundData?.id) {
+      console.warn('Cannot trigger reveal: missing required data');
+      return;
+    }
+    
+    // Calculate correctness for each player
+    const playerResults = {};
+    
+    for (const player of players) {
+      const gameState = getPlayerGameState(player.id);
+      if (gameState) {
+        const result = calculatePlacementCorrectness(gameState, currentSong.id);
+        playerResults[player.id] = result;
+        
+        // Update correct_placements count if placement was correct
+        if (result.isCorrect) {
+          try {
+            await matchService.incrementCorrectPlacements(match.id, player.id);
+          } catch (err) {
+            console.error('Error updating correct placements:', err);
+          }
+        }
+      }
+    }
+    
+    // Set reveal data
+    setRevealData({
+      roundId: currentRoundData.id,
+      songId: currentSong.id,
+      songTitle: currentSong.title,
+      songArtist: currentSong.artist,
+      releaseYear: currentSong.release_year,
+      playerResults
+    });
+    
+    // Unsubscribe from opponent placement if still active
+    if (unsubscribeOpponentRef.current) {
+      unsubscribeOpponentRef.current();
+      unsubscribeOpponentRef.current = null;
+    }
+    
+    setPlacementStatus('placing');
+  }, [match?.id, currentSong, currentRoundData, players, gameStates, calculatePlacementCorrectness]);
+
+  /**
+   * Reset reveal state and prepare for next round
+   */
+  const handleRevealComplete = useCallback(async () => {
+    setRevealData(null);
+    setPlacedSongs([]);
+    setCurrentSong(null);
+    setHasStartedRound(false);
+    
+    // Note: Next round will be started by host
+  }, []);
 
   const handleLeaveGame = () => {
     navigate(`/room/${roomCode}`);
@@ -656,8 +769,16 @@ export function GameScreen() {
       const unsubscribe = gameService.subscribeToOpponentPlacement(
         match.id,
         playerId,
-        () => {
-          setPlacementStatus('placing');
+        async () => {
+          // Check if all players have now submitted
+          const allSubmitted = allPlayersSubmitted();
+          if (allSubmitted) {
+            // Trigger reveal phase
+            await triggerReveal();
+          } else {
+            // Still waiting for other players
+            setPlacementStatus('placing');
+          }
           if (unsubscribeOpponentRef.current) {
             unsubscribeOpponentRef.current();
             unsubscribeOpponentRef.current = null;
@@ -670,7 +791,7 @@ export function GameScreen() {
       setError(err.message || 'Failed to confirm placement');
       setPlacementStatus('placing');
     }
-  }, [match?.id, playerId, placedSongs]);
+  }, [match?.id, playerId, placedSongs, allPlayersSubmitted, triggerReveal]);
 
   if (loading) {
     return (
@@ -726,6 +847,20 @@ export function GameScreen() {
             isVisible={showCountdownOverlay}
             onComplete={() => setShowCountdownOverlay(false)}
             countdownFrom={3}
+          />
+        )}
+
+        {/* Reveal Overlay - shown when round is resolved */}
+        {revealData && (
+          <RevealOverlay
+            isVisible={!!revealData}
+            releaseYear={revealData.releaseYear}
+            songTitle={revealData.songTitle}
+            songArtist={revealData.songArtist}
+            playerResults={revealData.playerResults}
+            players={players}
+            currentPlayerId={playerId}
+            onComplete={handleRevealComplete}
           />
         )}
 
@@ -819,6 +954,9 @@ export function GameScreen() {
               songs={placedSongs}
               onSongDrop={handleSongDrop}
               className="game-timeline"
+              revealed={!!revealData}
+              currentSongId={currentSong?.id}
+              playerResult={revealData?.playerResults?.[playerId]}
             />
             <ConfirmButton
               onConfirm={handleConfirmPlacement}

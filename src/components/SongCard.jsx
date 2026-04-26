@@ -6,8 +6,9 @@ import { createDragImage, supportsTouch, getDragEventHandlers } from '../utils/d
  * SongCard component - Draggable song card for timeline placement
  * Shows current song information and handles drag operations
  * Supports both mouse and touch events with keyboard accessibility
+ * In revealed state, shows correctness and actual release year
  */
-export function SongCard({ song, onDragStart, className = '' }) {
+export function SongCard({ song, onDragStart, className = '', revealed = false, isCorrect = null }) {
   if (!song) {
     return null;
   }
@@ -78,18 +79,30 @@ export function SongCard({ song, onDragStart, className = '' }) {
   const dragHandlers = getDragEventHandlers();
   const isTouchDevice = supportsTouch();
 
+  // Determine status badge text
+  const getStatusBadge = () => {
+    if (revealed) {
+      if (isCorrect === true) return <span className="status-badge correct">✓ Correct</span>;
+      if (isCorrect === false) return <span className="status-badge incorrect">✗ Incorrect</span>;
+    }
+    return <span className="status-badge unplaced">Unplaced</span>;
+  };
+
   return (
     <div
       ref={cardRef}
-      className={`song-card ${className} ${isDragging ? 'dragging' : ''}`}
-      draggable={!isTouchDevice}
+      className={`song-card ${className} ${isDragging ? 'dragging' : ''} ${revealed ? 'revealed' : ''} ${isCorrect === true ? 'correct' : ''} ${isCorrect === false ? 'incorrect' : ''}`}
+      draggable={!isTouchDevice && !revealed}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onTouchStart={isTouchDevice ? handleTouchStart : undefined}
       onTouchEnd={isTouchDevice ? handleDragEnd : undefined}
       onKeyDown={handleKeyDown}
       role="button"
-      aria-label={`Drag ${song.title} by ${song.artist} to timeline. Press Space or Enter to grab.`}
+      aria-label={revealed 
+        ? `${song.title} by ${song.artist} - ${isCorrect ? 'Correct' : 'Incorrect'}`
+        : `Drag ${song.title} by ${song.artist} to timeline. Press Space or Enter to grab.`
+      }
       aria-grabbed={isDragging ? 'true' : 'false'}
       tabIndex={0}
     >
@@ -97,15 +110,20 @@ export function SongCard({ song, onDragStart, className = '' }) {
         <div className="song-info">
           <h3 className="song-title" id={`song-${song.id || 'current'}-title`}>{song.title}</h3>
           <p className="song-artist">by {song.artist}</p>
+          {revealed && song.release_year && (
+            <p className="song-year">Release Year: {song.release_year}</p>
+          )}
         </div>
         <div className="song-status">
-          <span className="status-badge unplaced">Unplaced</span>
+          {getStatusBadge()}
         </div>
       </div>
-      <div className="drag-handle" aria-hidden="true">
-        <span className="drag-icon">⋮⋮</span>
-        <span className="drag-hint">Drag to timeline</span>
-      </div>
+      {!revealed && (
+        <div className="drag-handle" aria-hidden="true">
+          <span className="drag-icon">⋮⋮</span>
+          <span className="drag-hint">Drag to timeline</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -118,7 +136,9 @@ SongCard.propTypes = {
     release_year: PropTypes.number
   }),
   onDragStart: PropTypes.func,
-  className: PropTypes.string
+  className: PropTypes.string,
+  revealed: PropTypes.bool,
+  isCorrect: PropTypes.bool
 };
 
 export default SongCard;

@@ -9,7 +9,7 @@ import { DragPreview } from './DragPreview';
  * Displays placed songs chronologically with drag-and-drop support
  * Supports both mouse and touch events
  */
-export function Timeline({ songs = [], onSongDrop, className = '', showYearMarkers = false }) {
+export function Timeline({ songs = [], onSongDrop, className = '', showYearMarkers = false, revealed = false, currentSongId = null, playerResult = {} }) {
   const [draggedSong, setDraggedSong] = useState(null);
   const [dropTargetIndex, setDropTargetIndex] = useState(null);
   const [isTouchDragging, setIsTouchDragging] = useState(false);
@@ -252,31 +252,33 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
               {/* Song item - draggable */}
               <div
-                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''}`}
-                draggable
-                onDragStart={(e) => handleDragStart(e, song, index)}
-                onDragEnd={handleDragEnd}
-                onTouchStart={(e) => handleTouchStart(e, song, index)}
+                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''} ${revealed && song.id === currentSongId ? (playerResult.isCorrect ? 'correct' : 'incorrect') : ''}`}
+                draggable={!revealed}
+                onDragStart={revealed ? undefined : (e) => handleDragStart(e, song, index)}
+                onDragEnd={revealed ? undefined : handleDragEnd}
+                onTouchStart={revealed ? undefined : (e) => handleTouchStart(e, song, index)}
                 onKeyDown={(e) => {
                   if (e.key === ' ' || e.key === 'Enter') {
                     e.preventDefault();
                     // Start drag with keyboard
-                    handleDragStart(
-                      { 
-                        ...e, 
-                        dataTransfer: {
-                          effectAllowed: 'move',
-                          setData: () => {},
-                          getData: () => JSON.stringify({ song, index })
-                        }
-                      },
-                      song,
-                      index
-                    );
+                    if (!revealed) {
+                      handleDragStart(
+                        { 
+                          ...e, 
+                          dataTransfer: {
+                            effectAllowed: 'move',
+                            setData: () => {},
+                            getData: () => JSON.stringify({ song, index })
+                          }
+                        },
+                        song,
+                        index
+                      );
+                    }
                   }
                 }}
                 role="button"
-                aria-label={`Drag ${song.title} by ${song.artist}. Press Space or Enter to grab.`}
+                aria-label={revealed ? `${song.title} by ${song.artist} - ${song.id === currentSongId ? (playerResult.isCorrect ? 'Correct' : 'Incorrect') : ''}` : `Drag ${song.title} by ${song.artist}. Press Space or Enter to grab.`}
                 tabIndex={0}
                 aria-grabbed={draggedSong?.id === song.id ? 'true' : 'false'}
               >
@@ -284,6 +286,11 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                   <h4 className="song-title">{song.title}</h4>
                   <p className="song-artist">by {song.artist}</p>
                   <span className="song-year">{song.release_year}</span>
+                  {revealed && song.id === currentSongId && (
+                    <span className={`correctness-indicator ${playerResult.isCorrect ? 'correct' : 'incorrect'}`}>
+                      {playerResult.isCorrect ? '✓' : '✗'}
+                    </span>
+                  )}
                 </div>
                 <div className="song-position" aria-label={`Position ${index + 1}`}>
                   #{index + 1}
@@ -333,7 +340,13 @@ Timeline.propTypes = {
     })
   ),
   onSongDrop: PropTypes.func,
-  className: PropTypes.string
+  className: PropTypes.string,
+  revealed: PropTypes.bool,
+  currentSongId: PropTypes.string,
+  playerResult: PropTypes.shape({
+    isCorrect: PropTypes.bool,
+    placedIndex: PropTypes.number
+  })
 };
 
 export default Timeline;
