@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { createAudioPlayer, formatTime } from '../utils/audioPlayer';
+import { syncManager } from '../utils/syncManager';
 
 /**
  * SongPlayer component - Handles audio playback for song snippets
@@ -10,6 +11,7 @@ import { createAudioPlayer, formatTime } from '../utils/audioPlayer';
  * - Handles autoplay with user interaction fallback
  * - Shows visual feedback (loading, playing, error states)
  * - Respects browser autoplay policies
+ * - Supports synchronized playback across multiple clients
  */
 export function SongPlayer({ 
   song, 
@@ -20,18 +22,23 @@ export function SongPlayer({
   onPlay,
   autoPlay = false,
   showControls = true,
-  volume = 0.7 
+  volume = 0.7,
+  syncEnabled = false,
+  syncManager: externalSyncManager = null 
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(duration);
   const [canReplay, setCanReplay] = useState(false);
+  const [isSynced, setIsSynced] = useState(false);
+  const [syncCountdown, setSyncCountdown] = useState(0);
   
   const audioPlayerRef = useRef(null);
   const audioElementRef = useRef(null);
   const countdownTimerRef = useRef(null);
   const playbackStartTimeRef = useRef(null);
+  const syncTimeoutRef = useRef(null);
 
   // Initialize audio player when song changes
   useEffect(() => {
@@ -94,10 +101,40 @@ export function SongPlayer({
     return cleanup;
   }, [song, autoPlay, duration, volume, onError, onFinish]);
 
+  // Get the sync manager instance
+  const manager = externalSyncManager || syncManager;
+
   // Clean up on unmount
   useEffect(() => {
     return cleanup;
   }, []);
+
+  // Listen to sync manager events
+  useEffect(() => {
+    if (!syncEnabled || !manager) return;
+
+    const handleCountdown = (value) => {
+      setSyncCountdown(value);
+    };
+
+    const handlePlay = (event) => {
+      if (song && song.preview_url) {
+        startSyncPlayback(event);
+      }
+    };
+
+    manager.setCallbacks({
+      onCountdown: handleCountdown,
+      onPlay: handlePlay
+    });
+
+    return () => {
+      manager.setCallbacks({
+        onCountdown: null,
+        onPlay: null
+      });
+    };
+  }, [syncEnabled, manager, song]);
 
   const cleanup = useCallback(() => {
     const player = audioPlayerRef.current;
@@ -106,6 +143,11 @@ export function SongPlayer({
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
+    }
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
     }
 
     if (audioElement) {
@@ -125,24 +167,119 @@ export function SongPlayer({
     setIsPlaying(false);
     setIsLoading(false);
     setHasError(false);
+    setSyncCountdown(0);
+    setIsSynced(false);
   }, []);
+
+  /**
+   * Start synchronized playback when sync manager triggers play
+   * @param {Object} event - Sync play event with startTime, snippetStartTime, snippetDuration
+   */
+  const startSyncPlayback = useCallback((event) => {
+    const audioElement = audioElementRef.current;
+    if (!audioElement || !song || !song.preview_url) {
+      return;
+    }
+
+    const { startTime, snippetStartTime = 0, snippetDuration = duration * 1000 } = event;
+    
+    // Calculate how much time has passed since sync start
+    const now = Date.now();
+    const elapsed = now - startTime;
+    const snippetDurationSec = snippetDuration / 1000;
+    
+    // If we're too far behind, don't start
+    if (elapsed >= snippetDuration) {
+      setHasError(true);
+      if (onError) onError(new Error('Sync window missed'));
+      return;
+    }
+
+    setIsLoading(false);
+    setIsPlaying(true);
+    setCanReplay(false);
+    setIsSynced(true);
+    
+    // Seek to appropriate position for late join
+    const seekPosition = (snippetStartTime / 1000) + (elapsed / 1000);
+    audioElement.currentTime = seekPosition;
+
+    startCountdown();
+
+    // Try to play
+    const playPromise = audioElement.play();
+
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          if (onPlay) onPlay();
+        })
+        .catch((error) => {
+          console.error('Sync playback failed:', error);
+          setIsPlaying(false);
+          setHasError(true);
+          stopCountdown();
+          if (onError) onError(error);
+        });
+    }
+
+    // Auto-stop after snippet duration minus elapsed time
+    const remainingTime = Math.max(0, snippetDuration - elapsed);
+    const stopTimer = setTimeout(() => {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      stopCountdown();
+      setIsPlaying(false);
+      setCanReplay(true);
+      if (onFinish) onFinish();
+    }, remainingTime);
+
+    // Store reference for cleanup
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+    syncTimeoutRef.current = stopTimer;
+  }, [song, duration, onPlay, onError, onFinish]);
 
   const startCountdown = useCallback(() => {
     stopCountdown();
     
     playbackStartTimeRef.current = Date.now() / 1000;
-    setTimeRemaining(duration);
+    
+    // Use sync countdown if in sync mode and countdown is active
+    if (syncEnabled && syncCountdown > 0) {
+      setTimeRemaining(syncCountdown * 1000); // Convert seconds to milliseconds
+    } else {
+      setTimeRemaining(duration);
+    }
 
     countdownTimerRef.current = setInterval(() => {
-      const elapsed = (Date.now() / 1000) - playbackStartTimeRef.current;
-      const remaining = Math.max(0, duration - elapsed);
-      setTimeRemaining(remaining);
+      // If in sync mode, use the sync manager's countdown
+      if (syncEnabled && manager) {
+        const currentCountdown = manager.getCountdown();
+        if (currentCountdown > 0) {
+          setTimeRemaining(currentCountdown * 1000);
+        } else {
+          // Countdown finished, check if playing
+          if (manager.getState() === 'playing') {
+            const elapsed = (Date.now() / 1000) - playbackStartTimeRef.current;
+            const remaining = Math.max(0, duration - elapsed);
+            setTimeRemaining(remaining);
+          } else {
+            setTimeRemaining(0);
+          }
+        }
+      } else {
+        const elapsed = (Date.now() / 1000) - playbackStartTimeRef.current;
+        const remaining = Math.max(0, duration - elapsed);
+        setTimeRemaining(remaining);
+      }
 
-      if (remaining <= 0) {
+      if (timeRemaining <= 0) {
         stopCountdown();
       }
     }, 100);
-  }, [duration]);
+  }, [duration, syncEnabled, syncCountdown, manager]);
 
   const stopCountdown = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -154,6 +291,12 @@ export function SongPlayer({
   const handlePlay = useCallback(() => {
     const audioElement = audioElementRef.current;
     if (!audioElement) return;
+
+    // If in sync mode, let sync manager handle playback
+    if (syncEnabled && manager && manager.getState() !== 'idle') {
+      console.log('In sync mode, ignoring manual play');
+      return;
+    }
 
     // Stop any existing playback
     if (isPlaying) {
@@ -168,6 +311,7 @@ export function SongPlayer({
     setIsLoading(false);
     setIsPlaying(true);
     setCanReplay(false);
+    setIsSynced(false);
 
     // Seek to start time
     audioElement.currentTime = startTime;
@@ -191,7 +335,7 @@ export function SongPlayer({
           if (onError) onError(error);
         });
     }
-  }, [isPlaying, startTime, startCountdown, stopCountdown, onPlay, onError]);
+  }, [isPlaying, startTime, startCountdown, stopCountdown, onPlay, onError, syncEnabled, manager]);
 
   const handleReplay = useCallback(() => {
     const audioElement = audioElementRef.current;
@@ -255,6 +399,16 @@ export function SongPlayer({
       <div className="song-info">
         <h3 className="song-title">{song.title}</h3>
         <p className="song-artist">{song.artist}</p>
+        {syncEnabled && isSynced && (
+          <div className="sync-badge">
+            <span>🔗 Synced</span>
+          </div>
+        )}
+        {syncEnabled && syncCountdown > 0 && !isPlaying && (
+          <div className="sync-countdown">
+            <span>Sync: {syncCountdown}s</span>
+          </div>
+        )}
       </div>
 
       {/* Countdown timer */}
@@ -278,13 +432,20 @@ export function SongPlayer({
         </div>
       )}
 
+      {/* Sync indicator (visible when in sync mode) */}
+      {syncEnabled && syncCountdown > 0 && !isPlaying && (
+        <div className="sync-waiting">
+          <span>Waiting for sync... ({syncCountdown}s)</span>
+        </div>
+      )}
+
       {/* Controls */}
       {showControls && (
         <div className="player-controls">
           <button 
             className={`control-button play-button ${isPlaying ? 'pause' : 'play'}`}
             onClick={handlePlay}
-            disabled={isLoading || !song.preview_url}
+            disabled={isLoading || !song.preview_url || (syncEnabled && syncCountdown > 0)}
             title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? '⏸️' : '▶️'}
@@ -329,7 +490,14 @@ SongPlayer.propTypes = {
   onPlay: PropTypes.func,
   autoPlay: PropTypes.bool,
   showControls: PropTypes.bool,
-  volume: PropTypes.number
+  volume: PropTypes.number,
+  syncEnabled: PropTypes.bool,
+  syncManager: PropTypes.object
+};
+
+SongPlayer.defaultProps = {
+  syncEnabled: false,
+  syncManager: null
 };
 
 export default SongPlayer;

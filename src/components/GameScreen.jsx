@@ -5,9 +5,14 @@ import { roomService } from '../utils/roomService';
 import { roundService } from '../utils/roundService';
 import { songService } from '../utils/songService';
 import { supabase } from '../lib/supabase';
+import { syncManager } from '../utils/syncManager';
+import { eventBus, EventType, subscribeRoundStart } from '../lib/realtime';
 import { SongPlayer } from './SongPlayer';
 import { RoundInfo } from './RoundInfo';
 import { ReplayButton } from './ReplayButton';
+import { SyncIndicator } from './SyncIndicator';
+import { CountdownOverlay } from './CountdownOverlay';
+import { PlaybackProgress } from './PlaybackProgress';
 
 /**
  * GameScreen component - Main game interface
@@ -35,22 +40,72 @@ export function GameScreen() {
   const [replayCount, setReplayCount] = useState(0);
   const [snippetStartTime, setSnippetStartTime] = useState(null);
   const [hasStartedRound, setHasStartedRound] = useState(false);
+  const [showCountdownOverlay, setShowCountdownOverlay] = useState(false);
+  const [syncStats, setSyncStats] = useState(null);
+  const [isSyncInProgress, setIsSyncInProgress] = useState(false);
   
   const [audioElementRef, setAudioElementRef] = useState(null);
   
   const matchChannelRef = useRef(null);
   const gameStateChannelRef = useRef(null);
   const roundChannelRef = useRef(null);
+  const realtimeSubscriptionsRef = useRef([]);
 
   // Get session data
   useEffect(() => {
     const sessionPlayerId = sessionStorage.getItem('playerId');
     const sessionIsHost = sessionStorage.getItem('isHost') === 'true';
     const sessionPlayerNumber = sessionStorage.getItem('playerNumber');
+    const sessionRoomId = sessionStorage.getItem('roomId');
     
     setPlayerId(sessionPlayerId);
     setIsHost(sessionIsHost);
     setPlayerNumber(sessionPlayerNumber ? parseInt(sessionPlayerNumber) : null);
+
+    // Initialize sync manager with match/player info
+    if (sessionRoomId) {
+      syncManager.init(sessionRoomId, sessionPlayerId);
+    }
+  }, []);
+
+  // Clean up sync manager on unmount
+  useEffect(() => {
+    return () => {
+      syncManager.cleanup();
+      realtimeSubscriptionsRef.current.forEach(sub => {
+        if (sub && typeof sub.unsubscribe === 'function') {
+          sub.unsubscribe();
+        }
+      });
+      realtimeSubscriptionsRef.current = [];
+    };
+  }, []);
+
+  // Listen to sync manager events
+  useEffect(() => {
+    const handleCountdown = (value) => {
+      if (value > 0) {
+        setShowCountdownOverlay(true);
+      } else {
+        setShowCountdownOverlay(false);
+      }
+    };
+
+    const handleSyncStatusChange = (stats) => {
+      setSyncStats(stats);
+    };
+
+    syncManager.setCallbacks({
+      onCountdown: handleCountdown,
+      onSyncStatusChange: handleSyncStatusChange
+    });
+
+    return () => {
+      syncManager.setCallbacks({
+        onCountdown: null,
+        onSyncStatusChange: null
+      });
+    };
   }, []);
 
   const loadMatchData = useCallback(async () => {
@@ -121,15 +176,16 @@ export function GameScreen() {
     }
   }, []);
 
-  // Start a new round with a random song
+  // Start a new round with a random song and synchronized countdown
   const startNewRound = useCallback(async () => {
-    if (!match || !match.id || !isHost) {
+    if (!match || !match.id || !isHost || !playerId) {
       setError('Only the host can start a new round');
       return;
     }
 
     try {
       setError('');
+      setIsSyncInProgress(true);
       
       // Get current round number from match
       const currentRoundNum = match.current_round || 1;
@@ -145,22 +201,55 @@ export function GameScreen() {
       setCurrentRound(currentRoundNum);
       
       // Get song data
+      let songData = null;
       if (newRound.song_id) {
-        const songData = await songService.getSongById(newRound.song_id);
+        songData = await songService.getSongById(newRound.song_id);
         setCurrentSong(songData);
         
         // Update match in database to increment round counter
         // Note: This is done via trigger in the database
       }
       
-      // Mark that we need to start playback
-      setHasStartedRound(false);
+      // Initialize sync manager with round info and start synchronized countdown
+      if (songData && newRound.id) {
+        const snippetStartMs = (songData.snippet_start || 0) * 1000;
+        const snippetDurationMs = (songData.snippet_duration || 20) * 1000;
+        
+        // Update round with started_at timestamp for sync tracking
+        const { error: updateError } = await supabase
+          .from('rounds')
+          .update({
+            started_at: new Date().toISOString(),
+            status: 'active'
+          })
+          .eq('id', newRound.id);
+
+        if (updateError) {
+          console.error('Error updating round start time:', updateError);
+        }
+        
+        // Start sync manager countdown
+        // This will broadcast to all players via Supabase real-time
+        await syncManager.startRound(
+          newRound.id,
+          newRound.song_id,
+          snippetStartMs,
+          snippetDurationMs
+        );
+
+        setShowCountdownOverlay(true);
+        setHasStartedRound(true);
+      } else {
+        setHasStartedRound(false);
+      }
       
     } catch (err) {
       console.error('Error starting new round:', err);
       setError(err.message || 'Failed to start round');
+    } finally {
+      setIsSyncInProgress(false);
     }
-  }, [match, isHost, currentRound]);
+  }, [match, isHost, currentRound, playerId]);
 
   // Handle song snippet finish
   const handleSnippetFinish = useCallback(async () => {
@@ -218,38 +307,44 @@ export function GameScreen() {
     setIsPlaying(false);
   }, []);
 
-  // Start playback when song is loaded
+  // Start playback when song is loaded and sync is active
   useEffect(() => {
     if (currentSong && hasStartedRound && !isPlaying) {
-      const audio = new Audio(currentSong.preview_url);
-      audio.volume = 0.7;
-      setAudioElementRef(audio);
-      
-      // Start playback
-      audio.currentTime = currentSong.snippet_start || 0;
-      setIsPlaying(true);
-      setSnippetStartTime(Date.now() / 1000);
-      
-      audio.play().catch(err => {
-        console.error('Playback failed:', err);
-        setIsPlaying(false);
-        handlePlaybackError(err);
-      });
-      
-      // Auto-stop after snippet duration
-      const duration = currentSong.snippet_duration || 20;
-      const stopTimer = setTimeout(() => {
-        audio.pause();
-        audio.currentTime = 0;
-        setIsPlaying(false);
-        handleSnippetFinish();
-      }, duration * 1000);
-      
-      return () => {
-        clearTimeout(stopTimer);
-        audio.pause();
-        audio.currentTime = 0;
-      };
+      // If sync manager is active and countdown has finished, playback will be
+      // handled by the sync manager via the SongPlayer component with syncEnabled=true
+      // So we only do manual playback if not in sync mode
+      const managerState = syncManager.getState();
+      if (managerState === 'idle' || managerState === 'ended') {
+        const audio = new Audio(currentSong.preview_url);
+        audio.volume = 0.7;
+        setAudioElementRef(audio);
+        
+        // Start playback
+        audio.currentTime = currentSong.snippet_start || 0;
+        setIsPlaying(true);
+        setSnippetStartTime(Date.now() / 1000);
+        
+        audio.play().catch(err => {
+          console.error('Playback failed:', err);
+          setIsPlaying(false);
+          handlePlaybackError(err);
+        });
+        
+        // Auto-stop after snippet duration
+        const duration = currentSong.snippet_duration || 20;
+        const stopTimer = setTimeout(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          setIsPlaying(false);
+          handleSnippetFinish();
+        }, duration * 1000);
+        
+        return () => {
+          clearTimeout(stopTimer);
+          audio.pause();
+          audio.currentTime = 0;
+        };
+      }
     }
   }, [currentSong, hasStartedRound, isPlaying, handlePlaybackError, handleSnippetFinish]);
 
@@ -418,8 +513,30 @@ export function GameScreen() {
       </header>
 
       <main className="game-main">
+        {/* Countdown Overlay - shown when sync countdown is active */}
+        {showCountdownOverlay && currentSong && (
+          <CountdownOverlay
+            isVisible={showCountdownOverlay}
+            onComplete={() => setShowCountdownOverlay(false)}
+            countdownFrom={3}
+          />
+        )}
+
         {/* Song Player Area */}
         <div className="song-player-area">
+          <div className="sync-components">
+            <SyncIndicator
+              totalPlayers={players.length}
+              inSync={syncStats ? syncStats.inSync : false}
+              size="medium"
+            />
+            {syncStats && (
+              <div className="sync-info">
+                <span>Players: {syncStats.totalPlayers} | In Sync: {syncStats.listening}</span>
+              </div>
+            )}
+          </div>
+          
           {currentSong ? (
             <>
               <SongPlayer
@@ -428,8 +545,18 @@ export function GameScreen() {
                 duration={snippetDuration}
                 onFinish={handleSnippetFinish}
                 onError={handlePlaybackError}
-                autoPlay={true}
-                showControls={false}
+                onPlay={() => setIsPlaying(true)}
+                autoPlay={false}
+                showControls={true}
+                syncEnabled={hasStartedRound}
+                syncManager={syncManager}
+              />
+              
+              <PlaybackProgress
+                duration={snippetDuration}
+                showTime={true}
+                showSyncIndicator={true}
+                height={6}
               />
               
               {/* Replay Button */}

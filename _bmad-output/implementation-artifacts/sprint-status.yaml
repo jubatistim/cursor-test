@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: '2026-04-26T01:40:00-03:00'
-last_updated: '2026-04-26T08:00:00-03:00'
+last_updated: '2026-04-26T08:55:00-03:00'
 project: 'Hitster Web'
 project_key: 'NOKEY'
 tracking_system: 'file-system'
@@ -52,7 +52,7 @@ development_status:
   # Epic 2: Song Playback
   epic-2: in-progress
   2-1-play-song-snippet: review
-  2-2-sync-playback: ready-for-dev
+  2-2-sync-playback: review
   epic-2-retrospective: optional
 
   # Epic 3: Timeline Placement
