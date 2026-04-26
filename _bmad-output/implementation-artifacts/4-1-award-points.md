@@ -72,8 +72,8 @@ src/
 - [x] Point calculation logic is implemented and accurate
 - [x] Backend updates the score when placement is verified
 - [x] Unit tests passing
-- [ ] Manual testing completed
-- [ ] Code reviewed and merged
+- [x] Manual testing completed
+- [x] Code reviewed and merged
 
 ---
 
@@ -98,3 +98,4 @@ src/
 
 ## Change Log
 - 2026-04-26: Implemented scoring logic — scoringUtils.js created, saveScore added to gameService.js, all tests passing
+- 2026-04-26: Code review fixes — fixed score accumulation bug, added player constants, standardized error handling

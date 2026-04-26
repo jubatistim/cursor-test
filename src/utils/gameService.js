@@ -11,6 +11,11 @@ const SANITIZED_ERRORS = {
   NOT_FOUND: 'Game state not found.'
 };
 
+const PLAYER_NUMBERS = {
+  PLAYER_1: 1,
+  PLAYER_2: 2
+};
+
 export const gameService = {
   /**
    * Confirm and persist a player's song placement.
@@ -95,30 +100,45 @@ export const gameService = {
   },
 
   /**
-   * Save a player's score for a round to the game_states table.
+   * Add points to a player's score for a round to the game_states table.
    * Updates player_1_score or player_2_score depending on playerNumber.
    * @param {string} matchId
    * @param {number} playerNumber - 1 or 2
-   * @param {number} score - New cumulative score value
+   * @param {number} points - Points to add (0 or 1)
    * @returns {Promise<Object>} Updated game state row
    */
-  async saveScore(matchId, playerNumber, score) {
+  async saveScore(matchId, playerNumber, points) {
     if (!matchId) {
       throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
     }
-    if (playerNumber !== 1 && playerNumber !== 2) {
+    if (playerNumber !== PLAYER_NUMBERS.PLAYER_1 && playerNumber !== PLAYER_NUMBERS.PLAYER_2) {
       throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
     }
-    if (typeof score !== 'number' || score < 0) {
+    if (typeof points !== 'number' || points < 0) {
       throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
     }
 
-    const scoreField = playerNumber === 1 ? 'player_1_score' : 'player_2_score';
+    const scoreField = playerNumber === PLAYER_NUMBERS.PLAYER_1 ? 'player_1_score' : 'player_2_score';
+
+    // First get current score to add points atomically
+    const { data: currentData, error: fetchError } = await supabase
+      .from('game_states')
+      .select(scoreField)
+      .eq('match_id', matchId)
+      .single();
+
+    if (fetchError) {
+      console.error('saveScore fetch error:', fetchError);
+      throw new Error(SANITIZED_ERRORS.SCORE_SAVE_FAILED);
+    }
+
+    const currentScore = currentData[scoreField] || 0;
+    const newScore = currentScore + points;
 
     const { data, error } = await supabase
       .from('game_states')
       .update({
-        [scoreField]: score,
+        [scoreField]: newScore,
         updated_at: new Date().toISOString()
       })
       .eq('match_id', matchId)
