@@ -20,47 +20,45 @@ export const songService = {
    * @returns {Promise<Object>} Song data
    */
   async getRandomUnusedSong(matchId) {
-    if (!matchId) {
-      console.error('getRandomUnusedSong called without matchId');
+    if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
+      console.error('getRandomUnusedSong called with invalid matchId');
       throw new Error(SANITIZED_ERRORS.INVALID_SONG);
     }
 
     try {
-      // Get all songs
+      // Use a single query with left join to find unused songs
+      // This avoids N+1 by doing it server-side
+      const { data: unusedSongs, error: queryError } = await supabase
+        .from('songs')
+        .select('*')
+        .not('id', 'in', `
+          (SELECT song_id FROM match_used_songs WHERE match_id = '${matchId}')
+        `);
+
+      if (queryError) {
+        console.error('Error fetching unused songs:', queryError);
+        throw new Error(SANITIZED_ERRORS.SONG_SELECTION_FAILED);
+      }
+
+      // If we have unused songs, pick one randomly
+      if (unusedSongs && unusedSongs.length > 0) {
+        const randomIndex = Math.floor(Math.random() * unusedSongs.length);
+        return unusedSongs[randomIndex];
+      }
+
+      // If all songs have been used, fallback to random song (allow reuse for long matches)
       const { data: allSongs, error: songsError } = await supabase
         .from('songs')
-        .select('*');
+        .select('*')
+        .limit(1000); // Always add limit for safety
 
       if (songsError || !allSongs || allSongs.length === 0) {
-        console.error('Error fetching songs:', songsError);
+        console.error('Error fetching all songs:', songsError);
         throw new Error(SANITIZED_ERRORS.NO_SONGS_AVAILABLE);
       }
 
-      // Get songs already used in this match
-      const { data: usedSongs, error: usedError } = await supabase
-        .from('match_used_songs')
-        .select('song_id')
-        .eq('match_id', matchId);
-
-      if (usedError) {
-        console.error('Error fetching used songs:', usedError);
-        // Continue without filtering - we'll still have songs to choose from
-      }
-
-      // Filter out used songs
-      const usedSongIds = usedSongs ? usedSongs.map(us => us.song_id) : [];
-      const availableSongs = allSongs.filter(song => !usedSongIds.includes(song.id));
-
-      // If all songs have been used, start reusing (for long matches)
-      const songsToChooseFrom = availableSongs.length > 0 ? availableSongs : allSongs;
-
-      if (songsToChooseFrom.length === 0) {
-        throw new Error(SANITIZED_ERRORS.NO_SONGS_AVAILABLE);
-      }
-
-      // Select a random song
-      const randomIndex = Math.floor(Math.random() * songsToChooseFrom.length);
-      return songsToChooseFrom[randomIndex];
+      const randomIndex = Math.floor(Math.random() * allSongs.length);
+      return allSongs[randomIndex];
     } catch (error) {
       console.error('Error in getRandomUnusedSong:', error);
       throw new Error(SANITIZED_ERRORS.SONG_SELECTION_FAILED);
@@ -73,8 +71,8 @@ export const songService = {
    * @returns {Promise<Object|null>} Song data or null
    */
   async getSongById(songId) {
-    if (!songId) {
-      console.error('getSongById called without songId');
+    if (!songId || typeof songId !== 'string' || songId.trim() === '') {
+      console.error('getSongById called with invalid songId');
       return null;
     }
 
@@ -98,14 +96,22 @@ export const songService = {
    * @returns {Promise<Array>} Array of song data
    */
   async getSongsByIds(songIds) {
-    if (!songIds || songIds.length === 0) {
+    if (!songIds || !Array.isArray(songIds) || songIds.length === 0) {
+      console.error('getSongsByIds called with invalid songIds');
+      return [];
+    }
+
+    // Validate all IDs are strings
+    const validIds = songIds.filter(id => typeof id === 'string' && id.trim() !== '');
+    if (validIds.length === 0) {
+      console.error('getSongsByIds called with no valid songIds');
       return [];
     }
 
     const { data, error } = await supabase
       .from('songs')
       .select('*')
-      .in('id', songIds);
+      .in('id', validIds);
 
     if (error) {
       console.error('Songs lookup error:', error);
@@ -122,18 +128,46 @@ export const songService = {
    * @returns {Promise<Array>} Array of song data
    */
   async getAllSongs(filters = {}, limit = 100) {
+    if (typeof limit !== 'number' || limit <= 0 || !Number.isInteger(limit)) {
+      console.error('getAllSongs called with invalid limit');
+      limit = 100;
+    }
+
+    // Validate and sanitize filters
+    const validatedFilters = {};
+    if (filters.genre && typeof filters.genre === 'string' && filters.genre.trim() !== '') {
+      validatedFilters.genre = filters.genre.trim();
+    }
+
+    if (filters.yearRange && typeof filters.yearRange === 'object') {
+      validatedFilters.yearRange = {};
+      if (typeof filters.yearRange.minYear === 'number' && Number.isInteger(filters.yearRange.minYear)) {
+        validatedFilters.yearRange.minYear = filters.yearRange.minYear;
+      }
+      if (typeof filters.yearRange.maxYear === 'number' && Number.isInteger(filters.yearRange.maxYear)) {
+        validatedFilters.yearRange.maxYear = filters.yearRange.maxYear;
+      }
+    }
+
+    if (filters.artist && typeof filters.artist === 'string' && filters.artist.trim() !== '') {
+      validatedFilters.artist = filters.artist.trim();
+    }
+
+    // Clamp limit to reasonable maximum
+    limit = Math.min(1000, Math.max(1, limit));
+
     let query = supabase
       .from('songs')
       .select('*')
       .limit(limit);
 
     // Apply filters
-    if (filters.genre) {
-      query = query.eq('genre', filters.genre);
+    if (validatedFilters.genre) {
+      query = query.eq('genre', validatedFilters.genre);
     }
 
-    if (filters.yearRange) {
-      const { minYear, maxYear } = filters.yearRange;
+    if (validatedFilters.yearRange) {
+      const { minYear, maxYear } = validatedFilters.yearRange;
       if (minYear !== undefined) {
         query = query.gte('release_year', minYear);
       }
@@ -142,8 +176,8 @@ export const songService = {
       }
     }
 
-    if (filters.artist) {
-      query = query.ilike('artist', `%${filters.artist}%`);
+    if (validatedFilters.artist) {
+      query = query.ilike('artist', `%${validatedFilters.artist}%`);
     }
 
     const { data, error } = await query;
@@ -162,28 +196,64 @@ export const songService = {
    * @returns {Promise<Object>} Added song data
    */
   async addSong(songData) {
-    if (!songData || !songData.title || !songData.artist || !songData.release_year) {
+    if (!songData || typeof songData !== 'object') {
       console.error('Invalid song data:', songData);
       throw new Error(SANITIZED_ERRORS.INVALID_SONG);
     }
 
+    if (!songData.title || typeof songData.title !== 'string' || songData.title.trim() === '') {
+      console.error('Invalid song title');
+      throw new Error(SANITIZED_ERRORS.INVALID_SONG);
+    }
+
+    if (!songData.artist || typeof songData.artist !== 'string' || songData.artist.trim() === '') {
+      console.error('Invalid song artist');
+      throw new Error(SANITIZED_ERRORS.INVALID_SONG);
+    }
+
+    if (songData.release_year == null || typeof songData.release_year !== 'number' || !Number.isInteger(songData.release_year)) {
+      console.error('Invalid song release_year');
+      throw new Error(SANITIZED_ERRORS.INVALID_SONG);
+    }
+
+    // Validate and sanitize optional fields
+    let spotifyId = songData.spotify_id;
+    if (spotifyId !== undefined && (typeof spotifyId !== 'string' || spotifyId.trim() === '')) {
+      spotifyId = null;
+    }
+
+    let genre = songData.genre;
+    if (genre !== undefined && (typeof genre !== 'string' || genre.trim() === '')) {
+      genre = null;
+    }
+
+    let snippetStart = songData.snippet_start || 0;
+    if (typeof snippetStart !== 'number' || snippetStart < 0) {
+      snippetStart = 0;
+    }
+
     // Validate snippet duration
-    const snippetDuration = songData.snippet_duration || 20;
-    if (snippetDuration < 15 || snippetDuration > 30) {
+    let snippetDuration = songData.snippet_duration || 20;
+    if (typeof snippetDuration !== 'number' || snippetDuration < 15 || snippetDuration > 30) {
       throw new Error('Snippet duration must be between 15 and 30 seconds');
+    }
+
+    let previewUrl = songData.preview_url;
+    if (previewUrl !== undefined && (typeof previewUrl !== 'string' || previewUrl.trim() === '')) {
+      previewUrl = null;
     }
 
     const { data, error } = await supabase
       .from('songs')
       .insert([{
-        title: songData.title,
-        artist: songData.artist,
+        title: songData.title.trim(),
+        artist: songData.artist.trim(),
         release_year: songData.release_year,
-        spotify_id: songData.spotify_id,
-        snippet_start: songData.snippet_start || 0,
+        spotify_id: spotifyId,
+        snippet_start: snippetStart,
         snippet_duration: snippetDuration,
-        genre: songData.genre,
-        preview_url: songData.preview_url
+        genre: genre,
+        preview_url: previewUrl
       }])
       .select();
 
@@ -234,9 +304,18 @@ export const songService = {
    * @returns {Promise<Array>} Array of matching songs
    */
   async searchSongs(query, limit = 20) {
-    if (!query || query.trim() === '') {
+    if (typeof query !== 'string' || query.trim() === '') {
+      console.error('searchSongs called with invalid query');
       return this.getAllSongs({}, limit);
     }
+
+    if (typeof limit !== 'number' || limit <= 0 || !Number.isInteger(limit)) {
+      console.error('searchSongs called with invalid limit');
+      limit = 20;
+    }
+
+    // Clamp limit to reasonable maximum
+    limit = Math.min(100, Math.max(1, limit));
 
     const searchTerm = `%${query.trim()}%`;
 

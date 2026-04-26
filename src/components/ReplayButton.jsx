@@ -47,13 +47,13 @@ export function ReplayButton({
   }, [canReplay, disabled, onReplay]);
 
   // Clean up timeout on unmount
-  useRef(() => {
+  useEffect(() => {
     return () => {
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
     };
-  });
+  }, []);
 
   const buttonClasses = [
     'replay-button',

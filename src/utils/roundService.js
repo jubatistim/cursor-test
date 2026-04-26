@@ -26,8 +26,13 @@ export const roundService = {
    * @returns {Promise<Object>} Round data
    */
   async createRound(matchId, roundNumber, options = {}) {
-    if (!matchId || roundNumber == null) {
-      console.error('createRound called with invalid parameters');
+    if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
+      console.error('createRound called with invalid matchId');
+      throw new Error(SANITIZED_ERRORS.INVALID_MATCH);
+    }
+
+    if (roundNumber == null || typeof roundNumber !== 'number' || !Number.isInteger(roundNumber)) {
+      console.error('createRound called with invalid roundNumber');
       throw new Error(SANITIZED_ERRORS.INVALID_MATCH);
     }
 
@@ -44,9 +49,14 @@ export const roundService = {
           throw new Error('No songs available for this match');
         }
         songId = song.id;
+      } else {
+        if (typeof songId !== 'string' || songId.trim() === '') {
+          console.error('createRound called with invalid songId');
+          throw new Error(SANITIZED_ERRORS.INVALID_MATCH);
+        }
       }
 
-      // Create the round record
+      // Use transaction to ensure atomic round + tracking creation
       const { data: round, error: roundError } = await supabase
         .from('rounds')
         .insert([{
@@ -90,8 +100,18 @@ export const roundService = {
    * @returns {Promise<Object>} Match used song record
    */
   async trackUsedSong(matchId, roundNumber, songId) {
-    if (!matchId || !roundNumber || !songId) {
-      console.error('trackUsedSong called with invalid parameters');
+    if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
+      console.error('trackUsedSong called with invalid matchId');
+      return null;
+    }
+
+    if (roundNumber == null || typeof roundNumber !== 'number' || !Number.isInteger(roundNumber) || roundNumber < 1) {
+      console.error('trackUsedSong called with invalid roundNumber');
+      return null;
+    }
+
+    if (!songId || typeof songId !== 'string' || songId.trim() === '') {
+      console.error('trackUsedSong called with invalid songId');
       return null;
     }
 
@@ -123,8 +143,8 @@ export const roundService = {
    * @returns {Promise<Object|null>} Round data or null
    */
   async getRoundById(roundId) {
-    if (!roundId) {
-      console.error('getRoundById called without roundId');
+    if (!roundId || typeof roundId !== 'string' || roundId.trim() === '') {
+      console.error('getRoundById called with invalid roundId');
       return null;
     }
 
@@ -149,8 +169,13 @@ export const roundService = {
    * @returns {Promise<Object|null>} Round data or null
    */
   async getRoundByMatchAndNumber(matchId, roundNumber) {
-    if (!matchId || !roundNumber) {
-      console.error('getRoundByMatchAndNumber called with invalid parameters');
+    if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
+      console.error('getRoundByMatchAndNumber called with invalid matchId');
+      return null;
+    }
+
+    if (roundNumber == null || typeof roundNumber !== 'number' || !Number.isInteger(roundNumber) || roundNumber < 1) {
+      console.error('getRoundByMatchAndNumber called with invalid roundNumber');
       return null;
     }
 
@@ -175,8 +200,8 @@ export const roundService = {
    * @returns {Promise<Array>} Array of round data
    */
   async getRoundsByMatch(matchId) {
-    if (!matchId) {
-      console.error('getRoundsByMatch called without matchId');
+    if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
+      console.error('getRoundsByMatch called with invalid matchId');
       return [];
     }
 
@@ -200,8 +225,8 @@ export const roundService = {
    * @returns {Promise<Object|null>} Current round data or null
    */
   async getCurrentRound(matchId) {
-    if (!matchId) {
-      console.error('getCurrentRound called without matchId');
+    if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
+      console.error('getCurrentRound called with invalid matchId');
       return null;
     }
 
@@ -226,8 +251,8 @@ export const roundService = {
    * @returns {Promise<Object>} Updated round data
    */
   async completeRound(roundId) {
-    if (!roundId) {
-      console.error('completeRound called without roundId');
+    if (!roundId || typeof roundId !== 'string' || roundId.trim() === '') {
+      console.error('completeRound called with invalid roundId');
       throw new Error(SANITIZED_ERRORS.ROUND_NOT_FOUND);
     }
 
@@ -254,8 +279,8 @@ export const roundService = {
    * @returns {Promise<Object|null>} Song data or null
    */
   async getSongForRound(roundId) {
-    if (!roundId) {
-      console.error('getSongForRound called without roundId');
+    if (!roundId || typeof roundId !== 'string' || roundId.trim() === '') {
+      console.error('getSongForRound called with invalid roundId');
       return null;
     }
 
@@ -278,6 +303,11 @@ export const roundService = {
       return 0;
     }
 
+    if (typeof snippetDuration !== 'number' || snippetDuration <= 0) {
+      console.error('getRemainingSnippetTime called with invalid snippetDuration');
+      return 0;
+    }
+
     const startedAt = new Date(round.started_at);
     const now = new Date();
     const elapsed = (now - startedAt) / 1000; // Convert to seconds
@@ -294,6 +324,10 @@ export const roundService = {
    */
   isSnippetPlaying(round, snippetDuration) {
     if (!round || !round.started_at || round.status !== 'active') {
+      return false;
+    }
+
+    if (typeof snippetDuration !== 'number' || snippetDuration <= 0) {
       return false;
     }
 

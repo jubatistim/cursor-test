@@ -126,7 +126,8 @@ export class SyncManager {
    * @returns {number} Current time in milliseconds (adjusted for server offset)
    */
   getAdjustedTime() {
-    return Date.now() + this.serverOffsetMs;
+    // Fallback to client time if offset not calculated yet
+    return Date.now() + (this.serverOffsetMs || 0);
   }
 
   /**
@@ -140,6 +141,20 @@ export class SyncManager {
   async startRound(roundId, songId, snippetStartMs = 0, snippetDurationMs = 20000) {
     if (this.state !== SyncStates.IDLE) {
       console.warn('Cannot start round: manager not in idle state');
+      return false;
+    }
+
+    // Validate required parameters
+    if (!roundId || !songId) {
+      console.error('Cannot start round: roundId and songId are required');
+      return false;
+    }
+    if (!this.matchId || !this.playerId) {
+      console.error('Cannot start round: syncManager not initialized with matchId and playerId');
+      return false;
+    }
+    if (snippetDurationMs <= 0) {
+      console.error('Cannot start round: snippetDurationMs must be positive');
       return false;
     }
 
@@ -193,7 +208,7 @@ export class SyncManager {
         .insert({
           round_id: this.roundId,
           player_id: this.playerId,
-          status: 'listening',
+          status: 'waiting',
           playback_started_at: new Date(countdownEndTime).toISOString(),
           sync_offset_ms: this.serverOffsetMs
         });
@@ -266,8 +281,15 @@ export class SyncManager {
       return;
     }
 
+    const startTime = this.getAdjustedTime();
+    // Guard against clock going backwards
+    if (startTime < this.countdownEndTime) {
+      console.warn('Clock adjusted backwards, resyncing start time');
+      this.countdownEndTime = startTime + DEFAULT_COUNTDOWN_MS;
+    }
+
     this.state = SyncStates.PLAYING;
-    this.playbackStartTime = this.getAdjustedTime();
+    this.playbackStartTime = startTime;
 
     // Mark player as listening
     const playerState = this.playerStates.get(this.playerId);
@@ -387,12 +409,24 @@ export class SyncManager {
     // Calculate when this event happened relative to now
     const eventAge = now - serverTimestamp;
     
+    // If event is from the future (clock skew), ignore it
+    if (eventAge < -1000) {
+      console.warn('Ignoring event from future, possible clock skew');
+      return false;
+    }
+    
     // If event is too old (> 5 seconds), ignore it
     if (eventAge > 5000) {
       console.warn('Ignoring old round start event');
       return false;
     }
 
+    // If we're already in this round's countdown, ignore duplicate event
+    if (this.state === SyncStates.COUNTDOWN && this.roundId === round.id) {
+      console.log('Duplicate round start event ignored');
+      return false;
+    }
+    
     // If we're already in a round, verify it's the same one
     if (this.state !== SyncStates.IDLE && this.roundId !== round.id) {
       console.warn('Received round start for different round');
@@ -478,6 +512,7 @@ export class SyncManager {
 
   /**
    * Check if this player is out of sync
+   * Uses server offset as proxy for sync health - large offsets indicate clock drift
    * @returns {boolean}
    */
   isOutOfSync() {
@@ -485,13 +520,8 @@ export class SyncManager {
       return false;
     }
 
-    const now = this.getAdjustedTime();
-    const elapsed = now - this.playbackStartTime;
-    const expectedEnd = this.playbackStartTime + this.snippetDuration;
-
-    // If we're more than 2 seconds behind or ahead, we're out of sync
-    const variance = Math.abs(elapsed - (expectedEnd - now));
-    return variance > SYNC_TOLERANCE_MS;
+    // Check if server clock offset exceeds tolerance (indicates clock drift)
+    return Math.abs(this.serverOffsetMs) > SYNC_TOLERANCE_MS;
   }
 
   /**
@@ -594,11 +624,16 @@ export class SyncManager {
   /**
    * Register callbacks
    * @param {Object} callbacks - Callback functions
+   * Note: null/undefined values are filtered out to prevent accidental callback removal
    */
   setCallbacks(callbacks) {
+    // Filter out null/undefined values to prevent overwriting existing callbacks
+    const validCallbacks = Object.fromEntries(
+      Object.entries(callbacks || {}).filter(([_, value]) => value != null)
+    );
     this.callbacks = {
       ...this.callbacks,
-      ...callbacks
+      ...validCallbacks
     };
   }
 

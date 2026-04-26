@@ -4,7 +4,7 @@ story_key: '2-1-play-song-snippet'
 epic: 2
 story_number: 1
 title: 'Play Song Snippet'
-status: 'review'
+status: 'done'
 sprint: 2
 priority: 1
 estimated_hours: 6
@@ -207,6 +207,56 @@ From Epic 1 (Room Management):
 ## Next Story
 
 After completing this story, proceed to **Story 2.2: Sync Playback** which ensures all players hear the same song at the same time.
+
+---
+
+## Review Findings
+
+### Decision Resolved (Architectural)
+- [x] [Review][Decision] Use Spotify API preview URLs for MVP — RESOLVED: b (Use preview URL format)
+- [x] [Review][Decision] Year display hidden from players — RESOLVED: a (Remove year from UI)
+- [x] [Review][Decision] Standardize replay limit — RESOLVED: b (3 replays, fix GameScreen check)
+
+### Patches Required
+
+#### Critical (Blockers)
+- [x] [Review][Patch] Fix getPreviewUrl to return actual preview URLs [spotify.js:150-160]
+- [x] [Review][Patch] Fix N+1 query in getRandomUnusedSong [songService.js:22-62]
+- [x] [Review][Patch] Add transaction for round creation [roundService.js:33-71]
+- [x] [Review][Patch] Fix stale closure in SongPlayer event listeners [SongPlayer.jsx:45-68]
+- [x] [Review][Patch] Fix useRef misuse for cleanup in ReplayButton [ReplayButton.jsx:43-48]
+
+#### High Priority
+- [x] [Review][Patch] Remove year display from UI [GameScreen.jsx:736]
+- [x] [Review][Patch] Fix replay limit to 3 in GameScreen [GameScreen.jsx:355]
+- [x] [Review][Patch] Prevent memory leak from audio elements [GameScreen.jsx:282-283]
+- [x] [Review][Patch] Add validation for songService parameters [songService.js:22-25, 35-39, 46-49, 52, 58-61, 95-98, 114-120, 130-132, 159-162, 171-173, 174-186]
+- [x] [Review][Patch] Add validation for roundService parameters [roundService.js:33-35, 40-44, 65-71, 89-91, 164-169, 246-248, 259-261]
+- [x] [Review][Patch] Add guards for audioPlayer time calculations [audioPlayer.js:27-29, 36, 73-76, 84-114, 215-227, 216-217]
+- [x] [Review][Patch] Add validation for spotify.js parameters [spotify.js:15-17, 33-36, 45-89, 95-118, 130-137, 141-145]
+- [x] [Review][Patch] Cleanup channels on unmount in GameScreen [GameScreen.jsx:505-520, 526-531]
+- [x] [Review][Patch] Prevent audio from playing after unmount [GameScreen.jsx:405-423]
+
+#### Medium Priority
+- [x] [Review][Patch] Use individual callback setters in SyncIndicator [SyncIndicator.jsx:37-42, 44-48]
+- [x] [Review][Patch] Add CSS animation cleanup in CountdownOverlay [CountdownOverlay.jsx:90-95]
+- [x] [Review][Patch] Prevent duplicate countdown timers [CountdownOverlay.jsx:45-55]
+- [x] [Review][Patch] Use unsubscribe pattern for callbacks [SongPlayer.jsx:78-88]
+- [x] [Review][Patch] Handle audio not ready for sync playback [syncManager.js:263-275]
+- [x] [Review][Patch] Handle late join when countdown not started [syncManager.js:340-345]
+- [x] [Review][Patch] Guard elapsed >= snippetDuration [syncManager.js:412-418]
+
+#### Low Priority
+- [x] [Review][Patch] Remove dead constant SPOTIFY_PREVIEW_BASE [spotify.js:7] - Kept as it's used in getPreviewUrl
+- [x] [Review][Patch] Fix off-by-one in replay count [ReplayButton.jsx:18-20, audioPlayer.js:73-76] - Logic is correct, check is >= MAX_REPLAYS
+- [x] [Review][Patch] Add database constraints and indexes [migration 0003] - Already has CHECK and indexes
+- [x] [Review][Patch] Fix seed data Spotify IDs [001_seed_songs.sql:1] - Fixed obvious invalid IDs
+
+### Deferred (Pre-existing)
+- [x] [Review][Defer] redundancy: CHECK constraint + trigger for snippet_duration — deferred, pre-existing
+- [x] [Review][Defer] Missing indexes on songs table — deferred, pre-existing
+- [x] [Review][Defer] Audio element cleanup across components — deferred, pre-existing
+- [x] [Review][Defer] SessionStorage quota handling — deferred, pre-existing
 
 ---
 

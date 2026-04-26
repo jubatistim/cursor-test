@@ -37,40 +37,93 @@ export function GameScreen() {
   const [currentRoundData, setCurrentRoundData] = useState(null);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [replayCount, setReplayCount] = useState(0);
+  // Persist replay count across page refreshes using localStorage
+  const [replayCount, setReplayCount] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem('replayCount') || '0');
+    } catch {
+      return 0;
+    }
+  });
   const [snippetStartTime, setSnippetStartTime] = useState(null);
+
+  // Sync replayCount to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('replayCount', replayCount.toString());
+    } catch (error) {
+      console.warn('Could not save replay count to localStorage:', error);
+    }
+  }, [replayCount]);
   const [hasStartedRound, setHasStartedRound] = useState(false);
   const [showCountdownOverlay, setShowCountdownOverlay] = useState(false);
   const [syncStats, setSyncStats] = useState(null);
   const [isSyncInProgress, setIsSyncInProgress] = useState(false);
   
   const [audioElementRef, setAudioElementRef] = useState(null);
+  const replayAudioRef = useRef(null);
+  const mountedRef = useRef(true);
   
+  // Track component mount state
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const matchChannelRef = useRef(null);
   const gameStateChannelRef = useRef(null);
   const roundChannelRef = useRef(null);
   const realtimeSubscriptionsRef = useRef([]);
 
+  // Track if syncManager has been initialized
+  const syncInitializedRef = useRef(false);
+
   // Get session data
   useEffect(() => {
-    const sessionPlayerId = sessionStorage.getItem('playerId');
-    const sessionIsHost = sessionStorage.getItem('isHost') === 'true';
-    const sessionPlayerNumber = sessionStorage.getItem('playerNumber');
-    const sessionRoomId = sessionStorage.getItem('roomId');
-    
-    setPlayerId(sessionPlayerId);
-    setIsHost(sessionIsHost);
-    setPlayerNumber(sessionPlayerNumber ? parseInt(sessionPlayerNumber) : null);
+    try {
+      const sessionPlayerId = sessionStorage.getItem('playerId');
+      const sessionIsHost = sessionStorage.getItem('isHost') === 'true';
+      const sessionPlayerNumber = sessionStorage.getItem('playerNumber');
+      const sessionRoomId = sessionStorage.getItem('roomId');
+      
+      setPlayerId(sessionPlayerId);
+      setIsHost(sessionIsHost);
+      setPlayerNumber(sessionPlayerNumber ? parseInt(sessionPlayerNumber) : null);
 
-    // Initialize sync manager with match/player info
-    if (sessionRoomId) {
-      syncManager.init(sessionRoomId, sessionPlayerId);
+      // Initialize sync manager with match/player info - only once
+      if (sessionRoomId && sessionPlayerId && !syncInitializedRef.current) {
+        syncManager.init(sessionRoomId, sessionPlayerId);
+        syncInitializedRef.current = true;
+      } else if (!sessionPlayerId) {
+        console.warn('No playerId in sessionStorage - sync features will be limited');
+      }
+    } catch (error) {
+      console.error('Failed to read from sessionStorage:', error);
+      // SessionStorage might be disabled - this will cause sync features to fail
     }
   }, []);
 
   // Clean up sync manager on unmount
   useEffect(() => {
+    // Notify server when player leaves during round
+    const handleBeforeUnload = () => {
+      if (currentRoundId && playerId) {
+        // Mark player as failed when leaving
+        supabase
+          .from('player_round_states')
+          .update({ status: 'failed' })
+          .eq('round_id', currentRoundId)
+          .eq('player_id', playerId)
+          .catch(() => {}); // Silently fail - we're unloading anyway
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       syncManager.cleanup();
       realtimeSubscriptionsRef.current.forEach(sub => {
         if (sub && typeof sub.unsubscribe === 'function') {
@@ -79,11 +132,19 @@ export function GameScreen() {
       });
       realtimeSubscriptionsRef.current = [];
     };
-  }, []);
+  }, [currentRoundId, playerId]);
+
+  // Subscribe to Supabase real-time round events
+  useEffect(() => {
+    if (match?.id) {
+      syncManager.subscribeToRoundEvents(match.id);
+    }
+  }, [match?.id]);
 
   // Listen to sync manager events
   useEffect(() => {
     const handleCountdown = (value) => {
+      if (!mountedRef.current) return;
       if (value > 0) {
         setShowCountdownOverlay(true);
       } else {
@@ -92,6 +153,7 @@ export function GameScreen() {
     };
 
     const handleSyncStatusChange = (stats) => {
+      if (!mountedRef.current) return;
       setSyncStats(stats);
     };
 
@@ -182,6 +244,12 @@ export function GameScreen() {
       setError('Only the host can start a new round');
       return;
     }
+    
+    // Prevent double click during sync
+    if (isSyncInProgress) {
+      console.warn('Round start already in progress');
+      return;
+    }
 
     try {
       setError('');
@@ -226,16 +294,29 @@ export function GameScreen() {
 
         if (updateError) {
           console.error('Error updating round start time:', updateError);
+          throw new Error('Failed to update round start time');
         }
         
-        // Start sync manager countdown
+        // Start sync manager countdown - atomic with round creation
         // This will broadcast to all players via Supabase real-time
-        await syncManager.startRound(
+        const syncStarted = await syncManager.startRound(
           newRound.id,
           newRound.song_id,
           snippetStartMs,
           snippetDurationMs
         );
+
+        if (!syncStarted) {
+          // Rollback: mark round as failed if sync didn't start
+          await supabase
+            .from('rounds')
+            .update({ status: 'failed' })
+            .eq('id', newRound.id)
+            .catch(rollbackError => {
+              console.error('Failed to rollback round status:', rollbackError);
+            });
+          throw new Error('Sync manager failed to start round');
+        }
 
         setShowCountdownOverlay(true);
         setHasStartedRound(true);
@@ -272,7 +353,7 @@ export function GameScreen() {
       return;
     }
     
-    if (replayCount >= 2) {
+    if (replayCount >= 3) {
       setError('Replay limit reached (3 replays total)');
       return;
     }
@@ -282,22 +363,47 @@ export function GameScreen() {
     setIsPlaying(true);
     setSnippetStartTime(Date.now() / 1000);
     
+    // Clean up previous audio element
+    if (replayAudioRef.current) {
+      replayAudioRef.current.pause();
+      replayAudioRef.current.currentTime = 0;
+      replayAudioRef.current.src = '';
+    }
+    
     // Create new audio element for replay
     const audio = new Audio(currentSong.preview_url);
-    audio.volume = 0.7;
-    audio.currentTime = currentSong.snippet_start || 0;
+    audio.volume = Math.max(0, Math.min(1, 0.7));
+    audio.currentTime = Math.max(0, currentSong.snippet_start || 0);
+    
+    // Store reference for cleanup
+    replayAudioRef.current = audio;
     
     audio.play().catch(err => {
       console.error('Replay failed:', err);
-      setIsPlaying(false);
+      if (mountedRef.current) {
+        setIsPlaying(false);
+      }
     });
     
     // Auto-stop after snippet duration
-    setTimeout(() => {
-      audio.pause();
-      audio.currentTime = 0;
-      setIsPlaying(false);
-    }, (currentSong.snippet_duration || 20) * 1000);
+    const duration = Math.max(15, Math.min(30, currentSong.snippet_duration || 20));
+    const stopTimer = setTimeout(() => {
+      if (mountedRef.current) {
+        audio.pause();
+        audio.currentTime = 0;
+        setIsPlaying(false);
+        replayAudioRef.current = null;
+      }
+    }, duration * 1000);
+    
+    return () => {
+      clearTimeout(stopTimer);
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = '';
+      }
+    };
   }, [currentSong, replayCount]);
 
   // Handle playback error
@@ -309,6 +415,8 @@ export function GameScreen() {
 
   // Start playback when song is loaded and sync is active
   useEffect(() => {
+    let cancelled = false;
+    
     if (currentSong && hasStartedRound && !isPlaying) {
       // If sync manager is active and countdown has finished, playback will be
       // handled by the sync manager via the SongPlayer component with syncEnabled=true
@@ -320,32 +428,42 @@ export function GameScreen() {
         setAudioElementRef(audio);
         
         // Start playback
-        audio.currentTime = currentSong.snippet_start || 0;
-        setIsPlaying(true);
-        setSnippetStartTime(Date.now() / 1000);
+        audio.currentTime = Math.max(0, currentSong.snippet_start || 0);
+        if (!cancelled) {
+          setIsPlaying(true);
+          setSnippetStartTime(Date.now() / 1000);
+        }
         
         audio.play().catch(err => {
           console.error('Playback failed:', err);
-          setIsPlaying(false);
-          handlePlaybackError(err);
+          if (!cancelled) {
+            setIsPlaying(false);
+            handlePlaybackError(err);
+          }
         });
         
         // Auto-stop after snippet duration
-        const duration = currentSong.snippet_duration || 20;
+        const duration = Math.max(15, Math.min(30, currentSong.snippet_duration || 20));
         const stopTimer = setTimeout(() => {
-          audio.pause();
-          audio.currentTime = 0;
-          setIsPlaying(false);
-          handleSnippetFinish();
+          if (!cancelled) {
+            audio.pause();
+            audio.currentTime = 0;
+            setIsPlaying(false);
+            handleSnippetFinish();
+          }
         }, duration * 1000);
         
         return () => {
+          cancelled = true;
           clearTimeout(stopTimer);
           audio.pause();
           audio.currentTime = 0;
+          audio.src = '';
         };
       }
     }
+    
+    return () => { cancelled = true; };
   }, [currentSong, hasStartedRound, isPlaying, handlePlaybackError, handleSnippetFinish]);
 
   // Setup real-time subscriptions
@@ -642,7 +760,6 @@ export function GameScreen() {
                 <p><strong>Now Playing:</strong></p>
                 <p>{currentSong.title}</p>
                 <p className="artist">by {currentSong.artist}</p>
-                <p className="year">Released: {currentSong.release_year}</p>
               </div>
             )}
             {!currentSong && !hasStartedRound && isHost && (

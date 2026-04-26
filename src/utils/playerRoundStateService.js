@@ -5,6 +5,9 @@ import { supabase } from '../lib/supabase';
  * Manages player_round_states table for tracking sync playback status
  */
 
+// Lock tracker to prevent race conditions
+const lockSet = new Set();
+
 // Sanitized error messages - never expose DB details to client
 const SANITIZED_ERRORS = {
   STATE_NOT_FOUND: 'Player round state not found.',
@@ -33,6 +36,25 @@ export const playerRoundStateService = {
       throw new Error(SANITIZED_ERRORS.INVALID_ROUND);
     }
 
+    // Validate UUID format
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(roundId) || !uuidPattern.test(playerId)) {
+      console.error('Invalid UUID format for roundId or playerId');
+      throw new Error(SANITIZED_ERRORS.INVALID_ROUND);
+    }
+
+    // Create lock key for this specific round/player combination
+    const lockKey = `${roundId}:${playerId}`;
+    
+    // If already locked, return early to prevent race conditions
+    if (lockSet.has(lockKey)) {
+      console.warn(`Race condition prevented: upsertState already in progress for ${lockKey}`);
+      return;
+    }
+
+    // Add lock
+    lockSet.add(lockKey);
+
     try {
       // Prepare the data
       const stateData = {
@@ -40,7 +62,7 @@ export const playerRoundStateService = {
         player_id: playerId,
         status: data.status || 'waiting',
         sync_offset_ms: data.syncOffsetMs || 0,
-        playback_started_at: data.playbackStartedAt ou null,
+        playback_started_at: data.playbackStartedAt || null,
         playback_ended_at: data.playbackEndedAt || null
       };
 
@@ -80,7 +102,23 @@ export const playerRoundStateService = {
 
         if (error) {
           console.error('State creation error:', error);
-          throw new Error(SANITIZED_ERRORS.STATE_CREATION_FAILED);
+          // Handle unique constraint violation - try update instead
+          if (error.code === '23505') {
+            console.log('Unique violation, attempting update instead');
+            const { data: updateData, error: updateError } = await supabase
+              .from('player_round_states')
+              .update(stateData)
+              .eq('round_id', roundId)
+              .eq('player_id', playerId)
+              .select();
+            if (updateError) {
+              console.error('Update after unique violation failed:', updateError);
+              throw new Error(SANITIZED_ERRORS.STATE_CREATION_FAILED);
+            }
+            result = updateData[0];
+          } else {
+            throw new Error(SANITIZED_ERRORS.STATE_CREATION_FAILED);
+          }
         }
         result = data[0];
       }
@@ -89,6 +127,9 @@ export const playerRoundStateService = {
     } catch (error) {
       console.error('Error in upsertState:', error);
       throw error;
+    } finally {
+      // Always remove lock
+      lockSet.delete(lockKey);
     }
   },
 
@@ -233,7 +274,8 @@ export const playerRoundStateService = {
     const failed = states.filter(s => s.status === 'failed').length;
 
     // Consider in sync if at least 80% are listening or completed
-    const inSync = (listening + completed) >= total * 0.8;
+    // Prevent division by zero when total is 0
+    const inSync = total > 0 && (listening + completed) >= total * 0.8;
 
     return {
       total,

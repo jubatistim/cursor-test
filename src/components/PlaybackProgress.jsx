@@ -23,49 +23,70 @@ export function PlaybackProgress({
   const [timeRemaining, setTimeRemaining] = useState(duration);
   const [isOutOfSync, setIsOutOfSync] = useState(false);
 
+  // Store interval reference for cleanup
+  const progressIntervalRef = useRef(null);
+  const stopTimeoutRef = useRef(null);
+
   // Listen to sync manager updates
   useEffect(() => {
     const handlePlay = ({ startTime, snippetStartTime, snippetDuration }) => {
+      // Clear previous interval if any
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      if (stopTimeoutRef.current) {
+        clearTimeout(stopTimeoutRef.current);
+        stopTimeoutRef.current = null;
+      }
+
       // Start tracking progress
       const updateProgress = () => {
         if (!startTime) return;
         
-        const now = Date.now();
+        // Use server-adjusted time
+        const now = syncManager.getAdjustedTime();
         const elapsed = (now - startTime) / 1000; // Convert to seconds
-        const durationSec = snippetDuration / 1000;
+        
+        // Prevent division by zero
+        const durationSec = Math.max(0.001, snippetDuration / 1000);
         const prog = Math.min(1, Math.max(0, elapsed / durationSec));
         setProgress(prog);
         setTimeRemaining(Math.max(0, Math.floor(durationSec - elapsed)));
         
         // Check if out of sync
-        if (syncManager.isOutOfSync()) {
-          setIsOutOfSync(true);
-        } else {
-          setIsOutOfSync(false);
-        }
+        setIsOutOfSync(syncManager.isOutOfSync());
       };
 
       // Update every 100ms for smooth progress
-      const interval = setInterval(updateProgress, 100);
+      progressIntervalRef.current = setInterval(updateProgress, 100);
       
-      return () => clearInterval(interval);
+      // Initial update
+      updateProgress();
+      
+      // Auto-cleanup after snippet duration
+      stopTimeoutRef.current = setTimeout(() => {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+      }, snippetDuration);
     };
 
-    // Handle play event
-    const playHandler = handlePlay();
-    syncManager.setCallbacks({
-      onPlay: (event) => {
-        if (playHandler && typeof playHandler === 'function') {
-          playHandler(event);
-        }
-        handlePlay()(event);
-      }
-    });
+    // Register callback
+    syncManager.setCallbacks({ onPlay: handlePlay });
 
     return () => {
-      syncManager.setCallbacks({
-        onPlay: null
-      });
+      // Cleanup on unmount
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      if (stopTimeoutRef.current) {
+        clearTimeout(stopTimeoutRef.current);
+        stopTimeoutRef.current = null;
+      }
+      syncManager.setCallbacks({ onPlay: null });
     };
   }, [duration]);
 

@@ -32,6 +32,11 @@ export function CountdownOverlay({
         setMessage(`Starting in ${value}...`);
       } else if (value === 0) {
         setMessage('Starting now!');
+        // Countdown reached 0, trigger completion
+        if (onComplete) {
+          onComplete();
+        }
+        setVisible(false);
       }
     };
 
@@ -72,13 +77,21 @@ export function CountdownOverlay({
   }, [isVisible, countdown, countdownFrom]);
 
   // Handle countdown locally if not using sync manager
+  // Skip local timer if syncManager is providing countdown values
   useEffect(() => {
-    if (visible && countdown > 0) {
+    // Clear any existing timer before creating a new one
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (visible && countdown > 0 && syncManager.getCountdown() <= 0) {
       timerRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
             if (timerRef.current) {
               clearInterval(timerRef.current);
+              timerRef.current = null;
             }
             // Trigger completion
             if (onComplete) {
@@ -89,14 +102,12 @@ export function CountdownOverlay({
           return prev - 1;
         });
       }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
     }
 
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, [visible, countdown, onComplete]);

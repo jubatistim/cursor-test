@@ -96,7 +96,7 @@ export function SongPlayer({
     }
 
     // Track if we've tried autoplay
-    const hasTriedAutoPlay = { current: !autoPlay };
+    const hasTriedAutoPlay = useRef(!autoPlay);
 
     return cleanup;
   }, [song, autoPlay, duration, volume, onError, onFinish]);
@@ -152,6 +152,8 @@ export function SongPlayer({
 
     if (audioElement) {
       audioElement.pause();
+      audioElement.currentTime = 0;
+      audioElement.src = '';
       audioElement.removeEventListener('canplay', handleCanPlay);
       audioElement.removeEventListener('error', handleError);
       audioElement.removeEventListener('ended', handleEnded);
@@ -176,6 +178,12 @@ export function SongPlayer({
    * @param {Object} event - Sync play event with startTime, snippetStartTime, snippetDuration
    */
   const startSyncPlayback = useCallback((event) => {
+    // Prevent multiple rapid calls
+    if (syncTimeoutRef.current) {
+      console.warn('startSyncPlayback already in progress');
+      return;
+    }
+
     const audioElement = audioElementRef.current;
     if (!audioElement || !song || !song.preview_url) {
       return;
@@ -219,6 +227,10 @@ export function SongPlayer({
           setIsPlaying(false);
           setHasError(true);
           stopCountdown();
+          if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+            syncTimeoutRef.current = null;
+          }
           if (onError) onError(error);
         });
     }
@@ -301,7 +313,7 @@ export function SongPlayer({
     // Stop any existing playback
     if (isPlaying) {
       audioElement.pause();
-      audioElement.currentTime = startTime;
+      audioElement.currentTime = Math.max(0, startTime || 0);
       stopCountdown();
       setIsPlaying(false);
       setCanReplay(true);
@@ -314,7 +326,7 @@ export function SongPlayer({
     setIsSynced(false);
 
     // Seek to start time
-    audioElement.currentTime = startTime;
+    audioElement.currentTime = Math.max(0, startTime || 0);
 
     // Start countdown
     startCountdown();

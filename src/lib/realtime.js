@@ -21,6 +21,9 @@ const ChannelPrefixes = {
   MATCH: 'match_'
 };
 
+// Sync constants
+const DEFAULT_COUNTDOWN_MS = 3000;
+
 /**
  * Real-time event callback registry
  * Allows multiple components to listen to the same events
@@ -124,13 +127,27 @@ class ChannelManager {
           // Only trigger for round_started status or when started_at is set
           if (payload.new && (payload.new.status === 'active' || payload.new.started_at)) {
             eventBus.emit(EventTypes.ROUND_STARTED, {
-              round: payload.new,
-              serverTimestamp: payload.commit_timestamp || new Date().toISOString()
+              event: 'round_started',
+              round_id: payload.new.id,
+              song_id: payload.new.song_id,
+              server_timestamp: payload.commit_timestamp || new Date().toISOString(),
+              countdown_duration_ms: DEFAULT_COUNTDOWN_MS,
+              snippet_start_ms: payload.new.snippet_start_ms || 0,
+              snippet_duration_ms: payload.new.snippet_duration_ms || 20000
             });
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err || status !== 'SUBSCRIBED') {
+          console.error('Supabase channel subscription failed:', err || `Status: ${status}`);
+          // Attempt reconnection after delay
+          setTimeout(() => {
+            console.log('Attempting to reconnect Supabase channel...');
+            channel.subscribe();
+          }, 2000);
+        }
+      });
 
     this.subscriptions.set(existingKey, { channel, subscription });
 
@@ -357,6 +374,11 @@ export async function getServerTimeOffset() {
 
     if (error) {
       console.warn('Could not get server time:', error);
+      return 0;
+    }
+
+    if (!data || !data[0] || !data[0].now) {
+      console.warn('Server time RPC returned unexpected format');
       return 0;
     }
 

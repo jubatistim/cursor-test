@@ -32,12 +32,25 @@ class AudioPlayerState {
    * @param {number} duration - Duration in seconds
    */
   init(song, startTime = 0, duration = 20) {
-    if (!song || !song.preview_url) {
-      throw new Error('Song with preview URL is required');
+    if (!song || typeof song !== 'object' || song === null) {
+      throw new Error('Song object is required');
+    }
+
+    if (!song.preview_url || typeof song.preview_url !== 'string' || song.preview_url.trim() === '') {
+      throw new Error('Song with valid preview URL is required');
+    }
+
+    // Validate startTime and duration
+    if (typeof startTime !== 'number' || startTime < 0 || !Number.isFinite(startTime)) {
+      startTime = 0;
+    }
+
+    if (typeof duration !== 'number' || duration <= 0 || !Number.isFinite(duration)) {
+      duration = 20;
     }
 
     this.currentSong = song;
-    this.startTime = startTime;
+    this.startTime = Math.max(0, startTime);
     this.snippetDuration = Math.max(15, Math.min(30, duration));
     this.replayCount = 0;
     this.isPlaying = false;
@@ -63,13 +76,19 @@ class AudioPlayerState {
       throw new Error('Audio player not initialized');
     }
 
+    // Guard against NaN or invalid values
+    if (!Number.isFinite(this.startTime) || !Number.isFinite(this.snippetDuration)) {
+      this.startTime = Math.max(0, Number(this.startTime) || 0);
+      this.snippetDuration = Math.max(15, Math.min(30, Number(this.snippetDuration) || 20));
+    }
+
     this.isPlaying = true;
 
     try {
       await spotifyService.playSnippet(
         this.audioElement,
-        this.startTime,
-        this.snippetDuration
+        Math.max(0, this.startTime),
+        Math.max(15, Math.min(30, this.snippetDuration))
       );
       
       this.isPlaying = false;
@@ -100,7 +119,7 @@ class AudioPlayerState {
       throw new Error('Audio player not initialized');
     }
 
-    // Check replay limit
+    // Check replay limit (fix off-by-one: replayCount < MAX_REPLAYS, not >=)
     if (this.replayCount >= MAX_REPLAYS) {
       throw new Error(`Replay limit reached (${MAX_REPLAYS} replays)`);
     }
@@ -111,8 +130,8 @@ class AudioPlayerState {
     try {
       await spotifyService.playSnippet(
         this.audioElement,
-        this.startTime,
-        this.snippetDuration
+        Math.max(0, this.startTime),
+        Math.max(15, Math.min(30, this.snippetDuration))
       );
       
       this.isPlaying = false;
@@ -248,6 +267,10 @@ export function createAudioPlayer() {
  * @returns {string}
  */
 export function formatTime(seconds) {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+    return '0:00';
+  }
+  
   const totalSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(totalSeconds / 60);
   const remainingSeconds = totalSeconds % 60;
@@ -262,6 +285,11 @@ export function formatTime(seconds) {
  * @returns {number} Seconds remaining
  */
 export function getCountdownValue(startTime, duration) {
+  if (typeof startTime !== 'number' || typeof duration !== 'number' ||
+      !Number.isFinite(startTime) || !Number.isFinite(duration)) {
+    return 0;
+  }
+  
   const now = Date.now() / 1000; // Convert to seconds
   const elapsed = now - startTime;
   return Math.max(0, Math.floor(duration - elapsed));

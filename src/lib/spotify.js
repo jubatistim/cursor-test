@@ -20,8 +20,8 @@ export const spotifyService = {
    * @returns {HTMLAudioElement} Audio element
    */
   createAudioElement(previewUrl) {
-    if (!previewUrl) {
-      throw new Error('Preview URL is required');
+    if (!previewUrl || typeof previewUrl !== 'string' || previewUrl.trim() === '') {
+      throw new Error('Valid preview URL is required');
     }
     
     const audio = new Audio(previewUrl);
@@ -40,6 +40,14 @@ export const spotifyService = {
   async playSnippet(audioElement, startTime = 0, duration = 20) {
     if (!audioElement) {
       throw new Error('Audio element is required');
+    }
+
+    if (typeof startTime !== 'number' || !Number.isFinite(startTime) || startTime < 0) {
+      startTime = 0;
+    }
+
+    if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
+      duration = 20;
     }
     
     // Clamp duration to 15-30 seconds
@@ -149,16 +157,18 @@ export const spotifyService = {
   /**
    * Get Spotify preview URL from track ID
    * Note: In production, you would need to use the Spotify API
-   * For MVP, we store preview URLs directly in the database
+   * For MVP, use Spotify's standard preview URL format
    * @param {string} spotifyId - Spotify track ID
    * @returns {string|null} Preview URL or null
    */
   getPreviewUrl(spotifyId) {
-    if (!spotifyId) return null;
+    if (!spotifyId || typeof spotifyId !== 'string' || spotifyId.trim() === '') {
+      return null;
+    }
     
-    // For MVP, we use the preview_url stored in the database
-    // This is a fallback that would be populated from the API
-    return null;
+    // Spotify preview URL format: https://p.scdn.co/mp3-preview/{spotify_id}
+    // Note: This requires the song to have a preview available
+    return `${SPOTIFY_PREVIEW_BASE}/${spotifyId}`;
   },
 
   /**

@@ -13,7 +13,7 @@ INSERT INTO songs (title, artist, release_year, spotify_id, snippet_start, snipp
 -- 1950s-1960s Classics
 ('Separation', 'Wake the Town', 1958, '3ZftKEB6xO08cLpDf6E4hT', 0, 20, 'Blues', 'https://p.scdn.co/mp3-preview/3ZftKEB6xO08cLpDf6E4hT'),
 ('Hound Dog', 'Elvis Presley', 1956, '2I54Y0W5VexBv6x10thSwM', 0, 20, 'Rock and Roll', 'https://p.scdn.co/mp3-preview/2I54Y0W5VexBv6x10thSwM'),
-('Johnny B. Goode', 'Chuck Berry', 1958, '2yoFyE6x7dY72qg8Z$Yq1', 0, 20, 'Rock and Roll', 'https://p.scdn.co/mp3-preview/2yoFyE6x7dY72qg8ZYq1'),
+('Johnny B. Goode', 'Chuck Berry', 1958, '2yoFyE6x7dY72qg8ZYq1', 0, 20, 'Rock and Roll', 'https://p.scdn.co/mp3-preview/2yoFyE6x7dY72qg8ZYq1'),
 ('Twist and Shout', 'The Beatles', 1964, '0cYH4Q1x0x2WJ67x55e0iL', 0, 20, 'Rock', 'https://p.scdn.co/mp3-preview/0cYH4Q1x0x2WJ67x55e0iL'),
 ('My Girl', 'The Temptations', 1964, '3T7xVst0h5h8M5f9A4u6N0', 0, 20, 'Soul', 'https://p.scdn.co/mp3-preview/3T7xVst0h5h8M5f9A4u6N0'),
 
@@ -21,11 +21,11 @@ INSERT INTO songs (title, artist, release_year, spotify_id, snippet_start, snipp
 ('Bohemian Rhapsody', 'Queen', 1975, '4uLU6hMCjMI75M1A2tKUQ3', 0, 20, 'Rock', 'https://p.scdn.co/mp3-preview/4uLU6hMCjMI75M1A2tKUQ3'),
 ('Stayin'' Alive', 'Bee Gees', 1977, '5UhJY0J5xW444jQJb4J5z5', 0, 20, 'Disco', 'https://p.scdn.co/mp3-preview/5UhJY0J5xW444jQJb4J5z5'),
 ('Hotel California', 'Eagles', 1976, '6R9Hxj4PJQj7t4W9J4J5z5', 0, 20, 'Rock', 'https://p.scdn.co/mp3-preview/6R9Hxj4PJQj7t4W9J4J5z5'),
-('Sweet Home Alabama', 'Lynyrd Skynyrd', 1974, '2ifR2Did-manW2A4J79xZq5', 0, 20, 'Southern Rock', 'https://p.scdn.co/mp3-preview/2ifR2Did-manW2A4J79xZq5'),
-('Dancing Queen', 'ABBA', 1976, '1C5CC pictureUeI8zY0H9g0J85', 0, 20, 'Pop', 'https://p.scdn.co/mp3-preview/1C5CCkUeI8zY0H9g0J85'),
+('Sweet Home Alabama', 'Lynyrd Skynyrd', 1974, '2ifR2DidmanW2A4J79xZq5', 0, 20, 'Southern Rock', 'https://p.scdn.co/mp3-preview/2ifR2DidmanW2A4J79xZq5'),
+('Dancing Queen', 'ABBA', 1976, '1C5CCkUeI8zY0H9g0J85', 0, 20, 'Pop', 'https://p.scdn.co/mp3-preview/1C5CCkUeI8zY0H9g0J85'),
 
 -- 1980s
-('Billie Jean', 'Michael Jackson', 1982, '5cj0lLpI4WwTRImportantH98F', 0, 20, 'Pop', 'https://p.scdn.co/mp3-preview/5cj0lLpI4WwXTRH98F'),
+('Billie Jean', 'Michael Jackson', 1982, '5cj0lLpI4WwXTRH98F', 0, 20, 'Pop', 'https://p.scdn.co/mp3-preview/5cj0lLpI4WwXTRH98F'),
 ('Like a Virgin', 'Madonna', 1984, '0xM5U4NaW2V2J7w0ULU6Z', 0, 20, 'Pop', 'https://p.scdn.co/mp3-preview/0xM5U4NaW2V2J7w0ULU6Z'),
 ('Sweet Child O'' Mine', 'Guns N'' Roses', 1987, '7zC2MSYYvH6XNx4E1Jz0l3', 0, 20, 'Hard Rock', 'https://p.scdn.co/mp3-preview/7zC2MSYYvH6XNx4E1Jz0l3'),
 ('Every Breath You Take', 'The Police', 1983, '0Y1Zzf9G6O5g40Dg6Y1Zzf', 0, 20, 'New Wave', 'https://p.scdn.co/mp3-preview/0Y1Zzf9G6O5g40Dg6Y1Zzf'),

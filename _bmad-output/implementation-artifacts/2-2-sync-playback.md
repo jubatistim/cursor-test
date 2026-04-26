@@ -4,7 +4,7 @@ story_key: '2-2-sync-playback'
 epic: 2
 story_number: 2
 title: 'Sync Playback'
-status: 'review'
+status: 'done'
 sprint: 2
 priority: 2
 estimated_hours: 4
@@ -275,6 +275,80 @@ After completing this story, Epic 2 (Song Playback) is complete. Proceed to **St
   - [x] Test player state tracking
   - [x] Test event handling
   - [x] Test cleanup and resource management
+
+---
+
+## Review Findings
+
+### Decision Resolved (Architectural)
+- [x] [Review][Decision] Use Supabase real-time exclusively for cross-client sync — RESOLVED: A ( Supabase real-time only, remove EventBus pattern conflict)
+- [x] [Review][Decision] Centralize sync state in singleton — RESOLVED: A (Pure singleton, components observe only)
+
+### Patches Required
+
+#### Critical (Blockers)
+- [ ] [Review][Patch] Activate Supabase round subscription in GameScreen.jsx [GameScreen.jsx]
+- [ ] [Review][Patch] Fix event structure to include countdown_duration_ms, snippet_start_ms, snippet_duration_ms [realtime.js:127-131]
+- [ ] [Review][Patch] Fix isOutOfSync formula: variance calculation is dimensionally invalid [syncManager.js:454-459]
+- [ ] [Review][Patch] Fix syntax error: 'ou' should be '||' [playerRoundStateService.js:32]
+- [ ] [Review][Patch] Set player status to 'waiting' at countdown start, not 'listening' [syncManager.js:171]
+- [ ] [Review][Merge callbacks instead of overwriting in setCallbacks [syncManager.js:28-38]
+
+#### High Priority
+- [ ] [Review][Patch] Add null guard for matchId/playerId in startRound [syncManager.js:109]
+- [ ] [Review][Patch] Validate parameters in startRound (roundId, songId, snippetDurationMs) [syncManager.js:179-182]
+- [ ] [Review][Patch] Guard against clock adjusted backwards during playback [syncManager.js:242]
+- [ ] [Review][Patch] Ignore events with future serverTimestamp relative to client [syncManager.js:320]
+- [ ] [Review][Patch] Handle late join when countdown not started [syncManager.js:340-345]
+- [ ] [Review][Patch] Guard against elapsed >= snippetDuration in late join [syncManager.js:412-418]
+- [ ] [Review][Patch] Add error handling for saveRoundStartToDatabase failures [syncManager.js:180-200]
+- [ ] [Review][Patch] Clear playerStates Map between rounds to prevent memory leak [syncManager.js:40-41]
+- [ ] [Review][Patch] Deduplicate round_started events [syncManager.js:325-335]
+- [ ] [Review][Patch] Fallback to client time if calculateServerOffset returns 0 [syncManager.js:145]
+- [ ] [Review][Patch] Handle Supabase RPC 'now' function failure [realtime.js:361-373]
+- [ ] [Review][Patch] Wrap event callbacks in try-catch to prevent cascade failures [realtime.js:33-43]
+- [ ] [Review][Patch] Null check payload.commit_timestamp [realtime.js:147-148]
+- [ ] [Review][Patch] Prevent duplicate subscriptions for same matchId [realtime.js:76-90]
+- [ ] [Review][Patch] Add locking for concurrent upsertState calls [playerRoundStateService.js:18-58]
+- [ ] [Review][Patch] Handle unique violation on insert, retry with update [playerRoundStateService.js:52-70]
+- [ ] [Review][Patch] Prevent division by zero in getSyncStats [playerRoundStateService.js:240-244]
+- [ ] [Review][Patch] Validate UUID format before DB operations [playerRoundStateService.js:35-45]
+- [ ] [Review][Patch] Prevent multiple rapid startSyncPlayback calls [src/components/SongPlayer.jsx:142-147]
+- [ ] [Review][Patch] Clear syncTimeoutRef on error exit [src/components/SongPlayer.jsx:148-150]
+
+#### Medium Priority
+- [ ] [Review][Patch] Block manual play in sync mode when not idle [src/components/SongPlayer.jsx:183-186]
+- [ ] [Review][Patch] Cleanup audio element references on unmount [src/components/SongPlayer.jsx:108-117]
+- [ ] [Review][Patch] Handle autoplay policy rejection [src/components/SongPlayer.jsx:171-173]
+- [ ] [Review][Patch] Prevent duplicate countdown timers [src/components/CountdownOverlay.jsx:45-55]
+- [ ] [Review][Patch] Trigger onComplete when countdown reaches 0 [src/components/CountdownOverlay.jsx:66-68]
+- [ ] [Review][Patch] Cleanup CSS animation references on unmount [src/components/CountdownOverlay.jsx:90-95]
+- [ ] [Review][Patch] Use individual callback setters instead of setCallbacks [src/components/SyncIndicator.jsx:37-42]
+- [ ] [Review][Patch] Respect parent props for controlled components [src/components/SyncIndicator.jsx:44-48]
+- [ ] [Review][Patch] Store and cleanup progress interval reference [src/components/PlaybackProgress.jsx:28-40]
+- [ ] [Review][Patch] Prevent division by zero in progress calculation [src/components/PlaybackProgress.jsx:32-34]
+- [ ] [Review][Patch] Use server-adjusted time for progress [src/components/PlaybackProgress.jsx:30]
+- [ ] [Review][Patch] Handle sessionStorage read failures [src/components/GameScreen.jsx:54-56]
+- [ ] [Review][Patch] Prevent multiple syncManager init with different values [src/components/GameScreen.jsx:88-92]
+- [ ] [Review][Patch] Track mounted state to prevent state update on unmount [src/components/GameScreen.jsx:105-112]
+- [ ] [Review][Patch] Prevent double click on Start Round button [src/components/GameScreen.jsx:208-222]
+- [ ] [Review][Patch] Ensure atomic round creation + sync start [src/components/GameScreen.jsx:211-235]
+- [ ] [Review][Patch] Guard against unmount during startNewRound effect [src/components/GameScreen.jsx:257-282]
+- [ ] [Review][Patch] Handle Supabase connection drops [src/components/GameScreen.jsx:305-320]
+- [ ] [Review][Patch] Cleanup realtimeSubscriptionsRef on remount [src/components/GameScreen.jsx:325-330]
+- [ ] [Review][Patch] Notify other players when player leaves during round [src/components/GameScreen.jsx:332-345]
+- [ ] [Review][Patch] Persist replay count across page refresh [src/components/GameScreen.jsx:410-415]
+
+#### Low Priority
+- [ ] [Review][Patch] Use unsubscribe pattern for syncManager callbacks [src/components/SongPlayer.jsx:78-88]
+- [ ] [Review][Patch] Handle audio not ready for sync playback [syncManager.js:263-275]
+
+### Deferred (Pre-existing)
+- [x] [Review][Defer] Missing indexing on player_round_states table — deferred, pre-existing
+- [x] [Review][Defer] No authentication on Supabase channel subscriptions — deferred, pre-existing
+- [x] [Review][Defer] Audio element cleanup in component unmount — deferred, pre-existing
+- [x] [Review][Defer] SessionStorage quota handling — deferred, pre-existing
+- [x] [Review][Defer] No rate limiting on round creation — deferred, pre-existing
 
 ---
 
