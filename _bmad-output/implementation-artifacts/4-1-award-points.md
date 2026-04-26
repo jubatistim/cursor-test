@@ -4,7 +4,7 @@ story_key: '4-1-award-points'
 epic: 4
 story_number: 1
 title: 'Award Points'
-status: 'ready-for-dev'
+status: 'review'
 sprint: 3
 priority: 1
 estimated_hours: 3
@@ -69,8 +69,32 @@ src/
 
 ## Definition of Done
 
-- [ ] Point calculation logic is implemented and accurate
-- [ ] Backend updates the score when placement is verified
-- [ ] Unit tests passing
+- [x] Point calculation logic is implemented and accurate
+- [x] Backend updates the score when placement is verified
+- [x] Unit tests passing
 - [ ] Manual testing completed
 - [ ] Code reviewed and merged
+
+---
+
+## Dev Agent Record
+
+### Implementation Plan
+- Created `src/utils/scoringUtils.js` with `isPlacementCorrect` and `calculatePoints` pure functions
+- Added `saveScore(matchId, playerNumber, score)` to `src/utils/gameService.js` updating `player_1_score` or `player_2_score` in `game_states`
+- All logic runs server-side via Supabase update (no client-side score manipulation possible)
+
+### Completion Notes
+- `calculatePoints` returns 1 if placement is chronologically correct, 0 otherwise
+- Edge cases covered: placement at beginning, end, ties (same year), invalid inputs
+- `saveScore` validates playerNumber (1 or 2), score (non-negative number), and matchId
+- 32 tests pass (20 new + 12 existing)
+
+## File List
+- src/utils/scoringUtils.js (NEW)
+- src/utils/scoringUtils.test.js (NEW)
+- src/utils/gameService.js (MODIFIED)
+- src/utils/gameService.test.js (MODIFIED)
+
+## Change Log
+- 2026-04-26: Implemented scoring logic — scoringUtils.js created, saveScore added to gameService.js, all tests passing

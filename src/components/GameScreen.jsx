@@ -16,6 +16,9 @@ import { PlaybackProgress } from './PlaybackProgress';
 import { Timeline } from './Timeline';
 import { SongCard } from './SongCard';
 import { YearMarkers } from './YearMarkers';
+import { ConfirmButton } from './ConfirmButton';
+import { WaitingOverlay } from './WaitingOverlay';
+import { gameService } from '../utils/gameService';
 
 /**
  * GameScreen component - Main game interface
@@ -39,6 +42,11 @@ export function GameScreen() {
   // Timeline and song placement state
   const [placedSongs, setPlacedSongs] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Placement confirmation state
+  // 'placing' | 'confirming' | 'waiting_for_opponent'
+  const [placementStatus, setPlacementStatus] = useState('placing');
+  const unsubscribeOpponentRef = useRef(null);
   
   // Round and song playback state
   const [currentRoundData, setCurrentRoundData] = useState(null);
@@ -132,6 +140,10 @@ export function GameScreen() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       syncManager.cleanup();
+      if (unsubscribeOpponentRef.current) {
+        unsubscribeOpponentRef.current();
+        unsubscribeOpponentRef.current = null;
+      }
       realtimeSubscriptionsRef.current.forEach(sub => {
         if (sub && typeof sub.unsubscribe === 'function') {
           sub.unsubscribe();
@@ -599,12 +611,16 @@ export function GameScreen() {
 
   // Drag and drop handlers for timeline
   const handleSongDragStart = (e, song) => {
+    // Block dragging while waiting for opponent
+    if (placementStatus === 'waiting_for_opponent') return;
     setIsDragging(true);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', JSON.stringify({ song }));
   };
 
   const handleSongDrop = (song, fromIndex, toIndex) => {
+    // Moving the card resets confirmation so player can re-confirm
+    if (placementStatus === 'waiting_for_opponent') return;
     setIsDragging(false);
 
     // For now, just add the song to the timeline at the specified position
@@ -625,6 +641,35 @@ export function GameScreen() {
   const handleDragEnd = () => {
     setIsDragging(false);
   };
+
+  // Confirm placement - persist to Supabase and wait for opponent
+  const handleConfirmPlacement = useCallback(async () => {
+    if (!match?.id || !playerId || placedSongs.length === 0) return;
+
+    setPlacementStatus('confirming');
+    try {
+      await gameService.confirmPlacement(match.id, playerId, placedSongs);
+      setPlacementStatus('waiting_for_opponent');
+
+      // Subscribe to opponent confirmation
+      const unsubscribe = gameService.subscribeToOpponentPlacement(
+        match.id,
+        playerId,
+        () => {
+          setPlacementStatus('placing');
+          if (unsubscribeOpponentRef.current) {
+            unsubscribeOpponentRef.current();
+            unsubscribeOpponentRef.current = null;
+          }
+        }
+      );
+      unsubscribeOpponentRef.current = unsubscribe;
+    } catch (err) {
+      console.error('Error confirming placement:', err);
+      setError(err.message || 'Failed to confirm placement');
+      setPlacementStatus('placing');
+    }
+  }, [match?.id, playerId, placedSongs]);
 
   if (loading) {
     return (
@@ -767,6 +812,12 @@ export function GameScreen() {
               onSongDrop={handleSongDrop}
               className="game-timeline"
             />
+            <ConfirmButton
+              onConfirm={handleConfirmPlacement}
+              disabled={placedSongs.length === 0 || placementStatus === 'waiting_for_opponent'}
+              isConfirming={placementStatus === 'confirming'}
+            />
+            <WaitingOverlay isVisible={placementStatus === 'waiting_for_opponent'} />
           </div>
         </div>
 
