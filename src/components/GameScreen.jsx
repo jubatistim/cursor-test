@@ -13,6 +13,9 @@ import { ReplayButton } from './ReplayButton';
 import { SyncIndicator } from './SyncIndicator';
 import { CountdownOverlay } from './CountdownOverlay';
 import { PlaybackProgress } from './PlaybackProgress';
+import { Timeline } from './Timeline';
+import { SongCard } from './SongCard';
+import { YearMarkers } from './YearMarkers';
 
 /**
  * GameScreen component - Main game interface
@@ -32,6 +35,10 @@ export function GameScreen() {
   const [error, setError] = useState('');
   const [currentRound, setCurrentRound] = useState(1);
   const [maxScore, setMaxScore] = useState(10);
+  
+  // Timeline and song placement state
+  const [placedSongs, setPlacedSongs] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
   
   // Round and song playback state
   const [currentRoundData, setCurrentRoundData] = useState(null);
@@ -590,6 +597,35 @@ export function GameScreen() {
     startNewRound();
   };
 
+  // Drag and drop handlers for timeline
+  const handleSongDragStart = (e, song) => {
+    setIsDragging(true);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ song }));
+  };
+
+  const handleSongDrop = (song, fromIndex, toIndex) => {
+    setIsDragging(false);
+
+    // For now, just add the song to the timeline at the specified position
+    // In a real implementation, this would handle reordering existing songs
+    const newPlacedSongs = [...placedSongs];
+
+    // Remove from current position if it exists
+    const existingIndex = newPlacedSongs.findIndex(s => s.id === song.id);
+    if (existingIndex !== -1) {
+      newPlacedSongs.splice(existingIndex, 1);
+    }
+
+    // Insert at new position
+    newPlacedSongs.splice(toIndex, 0, song);
+    setPlacedSongs(newPlacedSongs);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
   if (loading) {
     return (
       <div className="game-container">
@@ -709,10 +745,28 @@ export function GameScreen() {
 
         <div className="game-area">
           <h2>Song Placement Area</h2>
-          <div className="placement-zone">
-            <p className="instructions">
-              Drag and drop songs to place them in the correct order
-            </p>
+
+          {/* Current Song Card - only show if we have a song and it hasn't been placed */}
+          {currentSong && !placedSongs.some(s => s.id === currentSong.id) && (
+            <div className="current-song-section">
+              <h3>Current Song</h3>
+              <SongCard
+                song={currentSong}
+                onDragStart={handleSongDragStart}
+                className="current-song-card"
+              />
+            </div>
+          )}
+
+          {/* Timeline */}
+          <div className="timeline-section">
+            <h3>Your Timeline</h3>
+            <YearMarkers songs={placedSongs} className="timeline-year-markers" />
+            <Timeline
+              songs={placedSongs}
+              onSongDrop={handleSongDrop}
+              className="game-timeline"
+            />
           </div>
         </div>
 
