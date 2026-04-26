@@ -69,12 +69,16 @@ p { margin: 0; }
 }
 
 .game-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 2rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.game-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
 }
 
 .game-info {
@@ -508,7 +512,6 @@ p { margin: 0; }
     margin-left: 0;
     align-self: flex-end;
   }
-}
 }
 
 .error-message {

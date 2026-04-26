@@ -18,6 +18,7 @@ import { SongCard } from './SongCard';
 import { YearMarkers } from './YearMarkers';
 import { ConfirmButton } from './ConfirmButton';
 import { WaitingOverlay } from './WaitingOverlay';
+import { ScoreBoard } from './ScoreBoard';
 import { gameService } from '../utils/gameService';
 
 /**
@@ -696,19 +697,26 @@ export function GameScreen() {
   return (
     <div className="game-container">
       <header className="game-header">
-        <h1>Hitster</h1>
-        <div className="game-info">
-          <span className="room-code">Room: {roomCode}</span>
-          <RoundInfo
-            roundNumber={currentRound}
-            isPlaying={isPlaying}
-            snippetStartTime={snippetStartTime}
-            snippetDuration={snippetDuration}
-            showSongInfo={true}
-            songTitle={currentSong ? currentSong.title : ''}
-            songArtist={currentSong ? currentSong.artist : ''}
-          />
+        <div className="game-header-top">
+          <h1>Hitster</h1>
+          <div className="game-info">
+            <span className="room-code">Room: {roomCode}</span>
+            <RoundInfo
+              roundNumber={currentRound}
+              isPlaying={isPlaying}
+              snippetStartTime={snippetStartTime}
+              snippetDuration={snippetDuration}
+              showSongInfo={true}
+              songTitle={currentSong ? currentSong.title : ''}
+              songArtist={currentSong ? currentSong.artist : ''}
+            />
+          </div>
         </div>
+        <ScoreBoard 
+          players={players}
+          gameStates={gameStates}
+          currentPlayerId={playerId}
+        />
       </header>
 
       <main className="game-main">

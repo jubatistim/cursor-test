@@ -65,7 +65,7 @@ development_status:
   # Epic 4: Scoring System
   epic-4: in-progress
   4-1-award-points: done
-  4-2-display-score: ready-for-dev
+  4-2-display-score: review
   epic-4-retrospective: optional
 
   # Epic 5: Round Resolution
