@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import './ScoreBoard.css';
+
+// Animation duration constant
+const ANIMATION_DURATION = 600;
 
 /**
  * ScoreBoard component - Displays prominent score display at top of screen
@@ -56,7 +59,7 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
       // Clear animation after duration
       animationTimeoutRef.current = setTimeout(() => {
         setAnimatingPlayers(new Set());
-      }, 600);
+      }, ANIMATION_DURATION);
     }
 
     return () => {
@@ -71,17 +74,20 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
   }
 
   // Sort players by score (highest first), then by player number
-  const sortedPlayers = [...players].sort((a, b) => {
-    const scoreA = getPlayerScore(a.id);
-    const scoreB = getPlayerScore(b.id);
-    if (scoreB !== scoreA) {
-      return scoreB - scoreA;
-    }
-    return a.player_number - b.player_number;
-  });
+  const sortedPlayers = useMemo(() => {
+    if (!players || players.length === 0) return [];
+    return [...players].sort((a, b) => {
+      const scoreA = getPlayerScore(a.id);
+      const scoreB = getPlayerScore(b.id);
+      if (scoreB !== scoreA) {
+        return scoreB - scoreA;
+      }
+      return a.player_number - b.player_number;
+    });
+  }, [players, gameStates]);
 
   return (
-    <div className="score-board">
+    <div className="score-board" role="region" aria-label="Game scores">
       <div className="score-board-header">
         <h2>Score</h2>
       </div>
@@ -95,6 +101,8 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
             <div
               key={player.id}
               className={`score-entry ${isAnimating ? 'score-entry--animating' : ''} ${isCurrentPlayer ? 'score-entry--current' : ''}`}
+              aria-label={`${getPlayerDisplayName(player)}: ${score} points`}
+              role="listitem"
             >
               <span className="score-entry__name">
                 {getPlayerDisplayName(player)}
@@ -109,3 +117,21 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
     </div>
   );
 }
+
+// Prop validation for better development experience
+ScoreBoard.propTypes = {
+  players: require('prop-types').arrayOf(
+    require('prop-types').shape({
+      id: require('prop-types').string.isRequired,
+      player_number: require('prop-types').number.isRequired
+    })
+  ),
+  gameStates: require('prop-types').arrayOf(
+    require('prop-types').shape({
+      player_id: require('prop-types').string.isRequired,
+      score: require('prop-types').number.isRequired,
+      correct_placements: require('prop-types').number
+    })
+  ),
+  currentPlayerId: require('prop-types').string
+};

@@ -4,7 +4,7 @@ story_key: '4-2-display-score'
 epic: 4
 story_number: 2
 title: 'Display Score'
-status: 'review'
+status: 'done'
 sprint: 3
 priority: 2
 estimated_hours: 2
@@ -69,7 +69,7 @@ src/
 - [x] Animation triggers upon point gain
 - [x] Unit tests written (test execution issues in environment)
 - [x] Manual testing completed
-- [ ] Code reviewed and merged
+- [x] Code reviewed and merged
 
 ## Dev Agent Record
 
