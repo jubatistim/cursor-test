@@ -56,35 +56,35 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Timeline Placement
-  epic-3: backlog
-  3-1-drag-to-place: backlog
-  3-2-insert-at-position: backlog
-  3-3-confirm-placement: backlog
+  epic-3: in-progress
+  3-1-drag-to-place: ready-for-dev
+  3-2-insert-at-position: ready-for-dev
+  3-3-confirm-placement: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: Scoring System
-  epic-4: backlog
-  4-1-award-points: backlog
-  4-2-display-score: backlog
+  epic-4: in-progress
+  4-1-award-points: ready-for-dev
+  4-2-display-score: ready-for-dev
   epic-4-retrospective: optional
 
   # Epic 5: Round Resolution
-  epic-5: backlog
-  5-1-reveal-correctness: backlog
-  5-2-lock-correct-placements: backlog
-  5-3-next-round-transition: backlog
-  5-4-timeout-handling: backlog
+  epic-5: in-progress
+  5-1-reveal-correctness: ready-for-dev
+  5-2-lock-correct-placements: ready-for-dev
+  5-3-next-round-transition: ready-for-dev
+  5-4-timeout-handling: ready-for-dev
   epic-5-retrospective: optional
 
   # Epic 6: Match Management
-  epic-6: backlog
-  6-1-win-detection: backlog
-  6-2-end-screen: backlog
-  6-3-rematch: backlog
+  epic-6: in-progress
+  6-1-win-detection: ready-for-dev
+  6-2-end-screen: ready-for-dev
+  6-3-rematch: ready-for-dev
   epic-6-retrospective: optional
 
   # Epic 7: Controls
-  epic-7: backlog
-  7-1-desktop-controls: backlog
-  7-2-mobile-controls: backlog
+  epic-7: in-progress
+  7-1-desktop-controls: ready-for-dev
+  7-2-mobile-controls: ready-for-dev
   epic-7-retrospective: optional
