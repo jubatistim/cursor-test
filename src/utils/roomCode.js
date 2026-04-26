@@ -6,3 +6,12 @@ export const generateRoomCode = () => {
   }
   return result;
 };
+
+export const validateRoomCode = (code) => {
+  if (!code) return false;
+  return /^[A-Z0-9]{6}$/.test(code);
+};
+
+export const formatRoomCode = (code) => {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+};
