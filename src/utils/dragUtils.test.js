@@ -57,7 +57,7 @@ describe('Drag Utils', () => {
   describe('getDropTargetIndex', () => {
     it('calculates correct index based on Y position', () => {
       const mockElement = {
-        getBoundingClientRect: () => ({ top: 100 }),
+        getBoundingClientRect: () => ({ top: 100, height: 240 }),
       };
       const mockEvent = { clientY: 180 }; // 80px from top
       const songs = [{ id: '1' }, { id: '2' }, { id: '3' }];
@@ -68,7 +68,7 @@ describe('Drag Utils', () => {
 
     it('clamps to valid range', () => {
       const mockElement = {
-        getBoundingClientRect: () => ({ top: 100 }),
+        getBoundingClientRect: () => ({ top: 100, height: 240 }),
       };
       const mockEvent = { clientY: 50 }; // Above timeline
       const songs = [{ id: '1' }, { id: '2' }];
@@ -175,8 +175,8 @@ describe('Drag Utils', () => {
       const songs = [];
 
       const result = getDropTargetIndex(mockEvent, mockElement, songs);
-      // With no songs, uses default of 80: 80px / 80 = 1
-      expect(result).toBe(1);
+      // With no songs, the only valid index is 0
+      expect(result).toBe(0);
     });
   });
 

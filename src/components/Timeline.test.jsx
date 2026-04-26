@@ -74,6 +74,25 @@ describe('Timeline Component', () => {
     expect(screen.getByText('Drop here')).toBeTruthy();
   });
 
+  it('renders empty timeline drop zone when no songs', () => {
+    render(<Timeline songs={[]} onSongDrop={mockOnSongDrop} />);
+
+    const dropZones = screen.getAllByTestId('drop-zone');
+    expect(dropZones).toHaveLength(1);
+    expect(screen.getByText('Timeline is empty')).toBeTruthy();
+  });
+
+  it('applies shift-down class to songs when insert target is at the top', () => {
+    const { container } = render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+    const dropZone = screen.getAllByTestId('drop-zone')[0];
+    fireEvent.dragOver(dropZone, { dataTransfer: { dropEffect: '' } });
+
+    const songItems = container.querySelectorAll('.song-item');
+    expect(songItems[0].className).toContain('shift-down');
+    expect(songItems[1].className).toContain('shift-down');
+  });
+
   it('applies custom className', () => {
     render(<Timeline songs={[]} onSongDrop={mockOnSongDrop} className="custom-timeline" />);
 

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { supportsTouch, getDragEventHandlers, handleKeyboardNavigation } from '../utils/dragUtils';
+import { supportsTouch, getDragEventHandlers, handleKeyboardNavigation, getDropTargetIndex } from '../utils/dragUtils';
+
 import { DragPreview } from './DragPreview';
 
 /**
@@ -42,14 +43,9 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
   const handleTouchMove = (e) => {
     if (!isTouchDragging || !timelineRef.current) return;
     e.preventDefault();
-    
+
     const touchY = e.touches[0].clientY;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const yInTimeline = touchY - rect.top;
-    
-    // Calculate target index based on touch position
-    const itemHeight = rect.height / Math.max(1, songs.length + 1);
-    const targetIndex = Math.floor(yInTimeline / itemHeight);
+    const targetIndex = getDropTargetIndex({ clientY: touchY }, timelineRef.current, songs);
     setDropTargetIndex(targetIndex);
     setMousePosition({ x: e.touches[0].clientX, y: touchY });
   };
@@ -57,20 +53,16 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
   // Handle touch end for mobile
   const handleTouchEnd = (e) => {
     if (!isTouchDragging) return;
-    
+
     const touch = e.changedTouches[0];
-    const rect = timelineRef.current?.getBoundingClientRect();
-    
-    if (rect) {
-      const yInTimeline = touch.clientY - rect.top;
-      const itemHeight = rect.height / Math.max(1, songs.length + 1);
-      const targetIndex = Math.floor(yInTimeline / itemHeight);
-      
-      if (draggedSong && onSongDrop) {
-        onSongDrop(draggedSong, draggedSong.originalIndex, targetIndex);
-      }
+    const targetIndex = timelineRef.current
+      ? getDropTargetIndex({ clientY: touch.clientY }, timelineRef.current, songs)
+      : 0;
+
+    if (draggedSong && onSongDrop) {
+      onSongDrop(draggedSong, draggedSong.originalIndex, targetIndex);
     }
-    
+
     // Reset state
     setIsTouchDragging(false);
     setDraggedSong(null);
@@ -194,13 +186,36 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
       <div className="timeline-container">
         {songs.length === 0 ? (
-          <div 
-            className="timeline-empty" 
-            role="status"
-            aria-label="Timeline is empty"
+          <div
+            className={`drop-zone empty-drop-zone ${dropTargetIndex === 0 ? 'active' : ''}`}
+            data-testid="drop-zone"
+            onDragOver={(e) => handleDragOver(e, 0)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, 0)}
+            onTouchEnd={(e) => {
+              if (isTouchDragging) {
+                handleTouchEnd(e);
+              }
+            }}
+            onKeyDown={(e) => handleDropZoneKeyDown(e, 0)}
+            role="button"
+            aria-label="Drop zone for empty timeline. Press Space or Enter to insert here."
+            tabIndex={0}
           >
-            <p>Timeline is empty</p>
-            <p>Drag songs here to start building your playlist</p>
+            {dropTargetIndex === 0 && (
+              <div className="drop-indicator" role="status" aria-live="polite">
+                <div className="drop-line" aria-hidden="true"></div>
+                <span>Drop here</span>
+              </div>
+            )}
+            <div 
+              className="timeline-empty" 
+              role="status"
+              aria-label="Timeline is empty"
+            >
+              <p>Timeline is empty</p>
+              <p>Drag songs here to start building your playlist</p>
+            </div>
           </div>
         ) : (
           songs.map((song, index) => (
@@ -237,7 +252,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
               {/* Song item - draggable */}
               <div
-                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''}`}
+                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''}`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, song, index)}
                 onDragEnd={handleDragEnd}
@@ -278,30 +293,31 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
           ))
         )}
 
-        {/* Drop zone at the end */}
-        <div
-          className={`drop-zone end-zone ${dropTargetIndex === songs.length ? 'active' : ''}`}
-          data-testid="drop-zone"
-          onDragOver={(e) => handleDragOver(e, songs.length)}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, songs.length)}
-          onTouchEnd={(e) => {
-            if (isTouchDragging) {
-              handleTouchEnd(e);
-            }
-          }}
-          onKeyDown={(e) => handleDropZoneKeyDown(e, songs.length)}
-          role="button"
-          aria-label="Drop zone at end. Press Space or Enter to insert here."
-          tabIndex={0}
-        >
-          {dropTargetIndex === songs.length && (
-            <div className="drop-indicator" role="status" aria-live="polite">
-              <div className="drop-line" aria-hidden="true"></div>
-              <span>Drop here</span>
-            </div>
-          )}
-        </div>
+        {songs.length > 0 && (
+          <div
+            className={`drop-zone end-zone ${dropTargetIndex === songs.length ? 'active' : ''}`}
+            data-testid="drop-zone"
+            onDragOver={(e) => handleDragOver(e, songs.length)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, songs.length)}
+            onTouchEnd={(e) => {
+              if (isTouchDragging) {
+                handleTouchEnd(e);
+              }
+            }}
+            onKeyDown={(e) => handleDropZoneKeyDown(e, songs.length)}
+            role="button"
+            aria-label="Drop zone at end. Press Space or Enter to insert here."
+            tabIndex={0}
+          >
+            {dropTargetIndex === songs.length && (
+              <div className="drop-indicator" role="status" aria-live="polite">
+                <div className="drop-line" aria-hidden="true"></div>
+                <span>Drop here</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
