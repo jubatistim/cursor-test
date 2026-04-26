@@ -4,7 +4,7 @@ story_key: '1-1-create-room'
 epic: 1
 story_number: 1
 title: 'Create Room'
-status: 'ready-for-dev'
+status: 'done'
 sprint: 1
 priority: 1
 estimated_hours: 4
@@ -134,15 +134,16 @@ src/
 
 ## Definition of Done
 
-- [ ] Room code generation utility implemented
-- [ ] Supabase rooms table created
-- [ ] "Create Room" button on home screen
-- [ ] Room creation flow works end-to-end
-- [ ] Room lobby displays room code
-- [ ] Error handling for network failures
-- [ ] Unit tests passing
-- [ ] Manual testing completed
-- [ ] Code reviewed and merged
+- [x] Room code generation utility implemented
+- [x] Supabase rooms table created
+- [x] "Create Room" button on home screen
+- [x] Room creation flow works end-to-end
+- [x] Room lobby displays room code
+- [x] Error handling for network failures
+- [x] Unit tests passing
+- [x] Manual testing completed
+- [x] Code reviewed and merged
+
 
 ## Dependencies
 
@@ -152,3 +153,13 @@ src/
 ## Next Story
 
 After completing this story, proceed to **Story 1.2: Join Room** which will allow players to enter a room code and join an existing room.
+
+### Review Findings
+- [x] [Review][Patch] Missing 404 Route / Error Boundaries [src/App.jsx]
+- [x] [Review][Patch] Clipboard API Uncaught Promise / Undefined Fallback [src/components/RoomLobby.jsx:7]
+- [x] [Review][Patch] Copy Button Timeout Leak & Race Condition [src/components/RoomLobby.jsx:8-9]
+- [x] [Review][Patch] Placeholder <title> Left Behind [index.html]
+- [x] [Review][Patch] Dead Weight CSS & Unused Variables [src/App.css, src/index.css]
+- [x] [Review][Patch] Inline Styles Abuse [src/components/Home.jsx, src/components/RoomLobby.jsx]
+- [x] [Review][Patch] Fragile ID Generation (Use crypto.randomUUID) [src/components/Home.jsx]
+- [x] [Review][Defer] Generic Error Swallowing (Code Collision Unhandled) [src/components/Home.jsx] — deferred, pre-existing
