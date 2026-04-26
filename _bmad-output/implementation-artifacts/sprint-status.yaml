@@ -46,8 +46,8 @@ development_status:
   epic-1: done
   1-1-create-room: done
   1-2-join-room: done
-  1-3-start-match: closed
-  epic-1-retrospective: optional
+  1-3-start-match: done
+  epic-1-retrospective: done
 
   # Epic 2: Song Playback
   epic-2: in-progress
