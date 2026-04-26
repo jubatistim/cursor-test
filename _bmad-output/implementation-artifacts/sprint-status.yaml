@@ -63,10 +63,10 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Scoring System
-  epic-4: in-progress
+  epic-4: done
   4-1-award-points: done
   4-2-display-score: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Round Resolution
   epic-5: in-progress
