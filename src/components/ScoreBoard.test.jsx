@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ScoreBoard } from './ScoreBoard';
 
+// Mock CSS imports to prevent import errors
+vi.mock('./ScoreBoard.css', () => ({}));
+
 describe('ScoreBoard', () => {
   const mockPlayers = [
     { id: 'player1', player_number: 1 },
@@ -37,11 +40,24 @@ describe('ScoreBoard', () => {
   it('sorts players by score (highest first)', () => {
     render(<ScoreBoard players={mockPlayers} gameStates={mockGameStates} currentPlayerId="player1" />);
     
-    const scoreEntries = screen.getAllByRole('generic').filter(el => el.classList.contains('score-entry'));
-    expect(scoreEntries[0]).toHaveTextContent('Player 2');
-    expect(scoreEntries[0]).toHaveTextContent('5');
-    expect(scoreEntries[1]).toHaveTextContent('You (P1)');
-    expect(scoreEntries[1]).toHaveTextContent('3');
+    // Player 2 should be mentioned first (higher score)
+    const player2Element = screen.getByText('Player 2');
+    const player1Element = screen.getByText('You (P1)');
+    
+    // Verify scores are displayed
+    expect(screen.getByText('5')).toBeTruthy();
+    expect(screen.getByText('3')).toBeTruthy();
+    
+    // Get the container to check order
+    const container = player2Element.closest('.score-entries');
+    const allEntries = container.querySelectorAll('.score-entry');
+    
+    // First entry should be Player 2 (higher score)
+    expect(allEntries[0]).toHaveTextContent('Player 2');
+    expect(allEntries[0]).toHaveTextContent('5');
+    // Second entry should be Player 1
+    expect(allEntries[1]).toHaveTextContent('You (P1)');
+    expect(allEntries[1]).toHaveTextContent('3');
   });
 
   it('handles missing game state gracefully', () => {
@@ -85,8 +101,15 @@ describe('ScoreBoard', () => {
     
     render(<ScoreBoard players={mockPlayers} gameStates={tiedGameStates} currentPlayerId="player1" />);
     
-    const scoreEntries = screen.getAllByRole('generic').filter(el => el.classList.contains('score-entry'));
-    expect(scoreEntries[0]).toHaveTextContent('Player 1'); // Lower player number first
-    expect(scoreEntries[1]).toHaveTextContent('Player 2');
+    // Get the container to check order
+    const container = screen.getByText('Score').closest('.score-board');
+    const allEntries = container.querySelectorAll('.score-entry');
+    
+    // When scores are equal, lower player number should be first
+    // currentPlayerId="player1" so player1 displays as "You (P1)"
+    expect(allEntries[0]).toHaveTextContent('You (P1)');
+    expect(allEntries[0]).toHaveTextContent('3');
+    expect(allEntries[1]).toHaveTextContent('Player 2');
+    expect(allEntries[1]).toHaveTextContent('3');
   });
 });

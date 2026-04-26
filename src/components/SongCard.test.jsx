@@ -1,22 +1,44 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+
+// Mock supportsTouch before importing SongCard
+vi.mock('../utils/dragUtils', async () => {
+  const actual = await vi.importActual('../utils/dragUtils');
+  return {
+    ...actual,
+    supportsTouch: () => false
+  };
+});
+
 import { SongCard } from '../components/SongCard';
 
+// Global flag to track renders for unique IDs
 describe('SongCard Component', () => {
-  const mockSong = {
-    id: '1',
-    title: 'Test Song',
-    artist: 'Test Artist',
-    release_year: 1985
-  };
+  let mockSong;
+  let mockOnDragStart;
+  let renderCount = 0;
 
-  const mockOnDragStart = vi.fn();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    renderCount++;
+    mockSong = {
+      id: `song-${renderCount}`,
+      title: `Test Song ${renderCount}`,
+      artist: 'Test Artist',
+      release_year: 1985
+    };
+    mockOnDragStart = vi.fn();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
 
   it('renders song information correctly', () => {
     render(<SongCard song={mockSong} onDragStart={mockOnDragStart} />);
 
-    expect(screen.getByText('Test Song')).toBeTruthy();
-    expect(screen.getByText('by Test Artist')).toBeTruthy();
+    expect(screen.getByText(mockSong.title)).toBeTruthy();
+    expect(screen.getByText(`by ${mockSong.artist}`)).toBeTruthy();
     expect(screen.getByText('Unplaced')).toBeTruthy();
   });
 
@@ -30,7 +52,7 @@ describe('SongCard Component', () => {
   it('calls onDragStart when drag starts', () => {
     render(<SongCard song={mockSong} onDragStart={mockOnDragStart} />);
 
-    const songCard = screen.getByText('Test Song').closest('.song-card');
+    const songCard = screen.getByText(mockSong.title).closest('.song-card');
     const mockDataTransfer = {
       effectAllowed: 'move',
       setData: vi.fn(),
@@ -47,7 +69,7 @@ describe('SongCard Component', () => {
   it('sets correct drag data', () => {
     render(<SongCard song={mockSong} onDragStart={mockOnDragStart} />);
 
-    const songCard = screen.getByText('Test Song').closest('.song-card');
+    const songCard = screen.getByText(mockSong.title).closest('.song-card');
     const mockDataTransfer = {
       effectAllowed: 'move',
       setData: vi.fn(),
@@ -61,7 +83,7 @@ describe('SongCard Component', () => {
   it('applies custom className', () => {
     render(<SongCard song={mockSong} onDragStart={mockOnDragStart} className="custom-card" />);
 
-    const songCard = screen.getByText('Test Song').closest('.song-card');
+    const songCard = screen.getByText(mockSong.title).closest('.song-card');
     expect(songCard.className).toContain('custom-card');
   });
 
@@ -73,7 +95,7 @@ describe('SongCard Component', () => {
   it('is draggable', () => {
     render(<SongCard song={mockSong} onDragStart={mockOnDragStart} />);
 
-    const songCard = screen.getByText('Test Song').closest('.song-card');
+    const songCard = screen.getByText(mockSong.title).closest('.song-card');
     expect(songCard.getAttribute('draggable')).toBe('true');
   });
 });

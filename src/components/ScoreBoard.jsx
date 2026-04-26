@@ -6,7 +6,7 @@ import './ScoreBoard.css';
  * Shows real-time score updates with subtle animations
  */
 export function ScoreBoard({ players, gameStates, currentPlayerId }) {
-  const [previousScores, setPreviousScores] = useState({});
+  const previousScoresRef = useRef({});
   const [animatingPlayers, setAnimatingPlayers] = useState(new Set());
   const animationTimeoutRef = useRef(null);
 
@@ -27,31 +27,32 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
 
   // Detect score changes and trigger animations
   useEffect(() => {
+    if (!players) return;
     const newScores = {};
     const newAnimatingPlayers = new Set();
-    
+
     players.forEach(player => {
       const currentScore = getPlayerScore(player.id);
       newScores[player.id] = currentScore;
-      
+
       // Check if score increased
-      if (previousScores[player.id] !== undefined && 
-          currentScore > previousScores[player.id]) {
+      if (previousScoresRef.current[player.id] !== undefined &&
+          currentScore > previousScoresRef.current[player.id]) {
         newAnimatingPlayers.add(player.id);
       }
     });
 
-    setPreviousScores(newScores);
-    
+    previousScoresRef.current = newScores;
+
     if (newAnimatingPlayers.size > 0) {
       // Clear existing timeout
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
-      
+
       // Set animating players
       setAnimatingPlayers(newAnimatingPlayers);
-      
+
       // Clear animation after duration
       animationTimeoutRef.current = setTimeout(() => {
         setAnimatingPlayers(new Set());
@@ -63,7 +64,11 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
         clearTimeout(animationTimeoutRef.current);
       }
     };
-  }, [players, gameStates, previousScores]);
+  }, [players, gameStates]);
+
+  if (!players || players.length === 0) {
+    return null;
+  }
 
   // Sort players by score (highest first), then by player number
   const sortedPlayers = [...players].sort((a, b) => {
@@ -74,10 +79,6 @@ export function ScoreBoard({ players, gameStates, currentPlayerId }) {
     }
     return a.player_number - b.player_number;
   });
-
-  if (!players || players.length === 0) {
-    return null;
-  }
 
   return (
     <div className="score-board">

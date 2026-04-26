@@ -1,22 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { roundService } from './roundService';
 import { supabase } from '../lib/supabase';
 
-// Mock Supabase client and songService
+// Mock Supabase client
 vi.mock('../lib/supabase', () => ({
   supabase: {
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({})),
-      eq: vi.fn(() => ({})),
-      insert: vi.fn(() => ({})),
-      single: vi.fn(() => ({})),
-      order: vi.fn(() => ({})),
-      update: vi.fn(() => ({})),
-    })),
-    rpc: vi.fn(() => ({}))
+    from: vi.fn(),
+    rpc: vi.fn()
   }
 }));
 
+// Mock songService
 vi.mock('./songService', () => ({
   songService: {
     getRandomUnusedSong: vi.fn(),
@@ -57,21 +51,22 @@ describe('Round Service', () => {
         status: 'active'
       };
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'rounds') {
-          return {
-            insert: vi.fn(() => ({
-              select: vi.fn(() => ({ data: [mockRound], error: null }))
-            }))
-          };
-        }
-        if (table === 'match_used_songs') {
-          return {
-            insert: vi.fn(() => ({ data: [], error: null }))
-          };
-        }
-        return { select: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              insert: vi.fn().mockReturnValue({
+                select: vi.fn().mockResolvedValue({ data: [mockRound], error: null })
+              })
+            };
+          }
+          if (table === 'match_used_songs') {
+            return {
+              insert: vi.fn().mockResolvedValue({ data: [], error: null })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.createRound('match-123', 1, { songId: 'song-123' });
       expect(result).toEqual(mockRound);
@@ -91,21 +86,22 @@ describe('Round Service', () => {
 
       songService.getRandomUnusedSong.mockResolvedValue(mockSong);
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'rounds') {
-          return {
-            insert: vi.fn(() => ({
-              select: vi.fn(() => ({ data: [mockRound], error: null }))
-            }))
-          };
-        }
-        if (table === 'match_used_songs') {
-          return {
-            insert: vi.fn(() => ({ data: [], error: null }))
-          };
-        }
-        return { select: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              insert: vi.fn().mockReturnValue({
+                select: vi.fn().mockResolvedValue({ data: [mockRound], error: null })
+              })
+            };
+          }
+          if (table === 'match_used_songs') {
+            return {
+              insert: vi.fn().mockResolvedValue({ data: [], error: null })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.createRound('match-123', 1);
       expect(result).toEqual(mockRound);
@@ -127,19 +123,20 @@ describe('Round Service', () => {
       
       songService.getRandomUnusedSong.mockResolvedValue({ id: 'song-123' });
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'rounds') {
-          return {
-            insert: vi.fn(() => ({
-              select: vi.fn(() => ({
-                data: null,
-                error: { code: '23505', message: 'Unique constraint violation' }
-              }))
-            }))
-          };
-        }
-        return { select: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              insert: vi.fn().mockReturnValue({
+                select: vi.fn().mockResolvedValue({ 
+                  data: null, 
+                  error: { code: '23505', message: 'Unique constraint violation' } 
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       await expect(roundService.createRound('match-123', 1))
         .rejects
@@ -157,31 +154,38 @@ describe('Round Service', () => {
       const mockRound = { id: 'round-123', match_id: 'match-123' };
       const mockSong = { id: 'song-123', title: 'Test Song' };
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'rounds') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                single: vi.fn(() => ({ data: { ...mockRound, songs: mockSong }, error: null }))
-              }))
-            }))
-          };
-        }
-        return { select: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: { ...mockRound, songs: mockSong }, error: null })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.getRoundById('round-123');
       expect(result).toEqual({ ...mockRound, songs: mockSong });
     });
 
     it('should return null when round not found', async () => {
-      supabase.from = vi.fn((table) => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            single: vi.fn(() => ({ data: null, error: new Error('Not found') }))
-          }))
-        }))
-      }));
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: null, error: new Error('Not found') })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.getRoundById('round-123');
       expect(result).toBeNull();
@@ -200,26 +204,38 @@ describe('Round Service', () => {
         { id: 'round-2', match_id: 'match-123', round_number: 2 }
       ];
 
-      supabase.from = vi.fn((table) => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            order: vi.fn(() => ({ data: mockRounds, error: null }))
-          }))
-        }))
-      }));
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  order: vi.fn().mockResolvedValue({ data: mockRounds, error: null })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.getRoundsByMatch('match-123');
       expect(result).toEqual(mockRounds);
     });
 
     it('should return empty array on error', async () => {
-      supabase.from = vi.fn((table) => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            order: vi.fn(() => ({ data: null, error: new Error('DB error') }))
-          }))
-        }))
-      }));
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  order: vi.fn().mockResolvedValue({ data: null, error: new Error('DB error') })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.getRoundsByMatch('match-123');
       expect(result).toEqual([]);
@@ -236,47 +252,59 @@ describe('Round Service', () => {
       const mockMatch = { id: 'match-123', current_round: 2 };
       const mockRound = { id: 'round-2', match_id: 'match-123', round_number: 2 };
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'matches') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                single: vi.fn(() => ({ data: mockMatch, error: null }))
-              }))
-            }))
-          };
-        }
-        if (table === 'rounds') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn((column, value) => {
-                if (column === 'match_id' && value === 'match-123') {
-                  return {
-                    eq: vi.fn(() => ({
-                      single: vi.fn(() => ({ data: mockRound, error: null }))
-                    }))
-                  };
-                }
-                return { single: vi.fn(() => ({ data: null, error: null })) };
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'matches') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: mockMatch, error: null })
+                })
               })
-            }))
-          };
-        }
-        return { select: vi.fn(() => ({})) };
-      });
+            };
+          }
+          if (table === 'rounds') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockImplementation((col, val) => {
+                  if (col === 'match_id' && val === 'match-123') {
+                    return {
+                      eq: vi.fn().mockImplementation((col2, val2) => {
+                        if (col2 === 'round_number' && val2 === 2) {
+                          return {
+                            single: vi.fn().mockResolvedValue({ data: mockRound, error: null })
+                          };
+                        }
+                        return { single: vi.fn().mockResolvedValue({ data: null, error: null }) };
+                      })
+                    };
+                  }
+                  return { single: vi.fn().mockResolvedValue({ data: null, error: null }) };
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.getCurrentRound('match-123');
       expect(result).toEqual(mockRound);
     });
 
     it('should return null when match not found', async () => {
-      supabase.from = vi.fn((table) => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            single: vi.fn(() => ({ data: null, error: new Error('Not found') }))
-          }))
-        }))
-      }));
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'matches') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: null, error: new Error('Not found') })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.getCurrentRound('match-123');
       expect(result).toBeNull();
@@ -294,31 +322,38 @@ describe('Round Service', () => {
       const mockRound = { id: 'round-123', status: 'active' };
       const updatedRound = { ...mockRound, status: 'completed' };
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'rounds') {
-          return {
-            update: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                select: vi.fn(() => ({ data: [updatedRound], error: null }))
-              }))
-            }))
-          };
-        }
-        return { update: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              update: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  select: vi.fn().mockResolvedValue({ data: [updatedRound], error: null })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.completeRound('round-123');
       expect(result).toEqual(updatedRound);
     });
 
     it('should throw error when round completion fails', async () => {
-      supabase.from = vi.fn((table) => ({
-        update: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            select: vi.fn(() => ({ data: null, error: new Error('Update failed') }))
-          }))
-        }))
-      }));
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'rounds') {
+            return {
+              update: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  select: vi.fn().mockResolvedValue({ data: null, error: new Error('Update failed') })
+                })
+              })
+            };
+          }
+          return {};
+        });
 
       await expect(roundService.completeRound('round-123'))
         .rejects
@@ -335,28 +370,30 @@ describe('Round Service', () => {
     it('should track used song successfully', async () => {
       const mockUsedSong = { match_id: 'match-123', song_id: 'song-123', round_number: 1 };
 
-      supabase.from = vi.fn((table) => {
-        if (table === 'match_used_songs') {
-          return {
-            insert: vi.fn(() => ({ data: [mockUsedSong], error: null }))
-          };
-        }
-        return { insert: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'match_used_songs') {
+            return {
+              insert: vi.fn().mockResolvedValue({ data: [mockUsedSong], error: null })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.trackUsedSong('match-123', 1, 'song-123');
       expect(result).toEqual(mockUsedSong);
     });
 
     it('should return null when tracking fails', async () => {
-      supabase.from = vi.fn((table) => {
-        if (table === 'match_used_songs') {
-          return {
-            insert: vi.fn(() => ({ data: null, error: new Error('DB error') }))
-          };
-        }
-        return { insert: vi.fn(() => ({})) };
-      });
+      supabase.from
+        .mockImplementation((table) => {
+          if (table === 'match_used_songs') {
+            return {
+              insert: vi.fn().mockResolvedValue({ data: null, error: new Error('DB error') })
+            };
+          }
+          return {};
+        });
 
       const result = await roundService.trackUsedSong('match-123', 1, 'song-123');
       expect(result).toBeNull();
@@ -380,7 +417,7 @@ describe('Round Service', () => {
       const startedAt = new Date(now - 5000).toISOString(); // 5 seconds ago
       const round = { id: 'round-123', started_at: startedAt };
       
-      // So that's 15 seconds passed in a 20 second snippet
+      // So that's 15 seconds remaining in a 20 second snippet
       const result = roundService.getRemainingSnippetTime(round, 20);
       
       // Should be approximately 15 seconds (20 - 5)

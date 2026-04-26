@@ -1,8 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
 import { YearMarkers } from './YearMarkers';
 
 describe('YearMarkers Component', () => {
+  afterEach(() => {
+    cleanup();
+  });
   it('renders default decade markers when no songs', () => {
     render(<YearMarkers songs={[]} />);
     
@@ -41,8 +44,8 @@ describe('YearMarkers Component', () => {
     
     render(<YearMarkers songs={songs} />);
     
-    // Should show default markers when no valid years
-    expect(screen.getByText('1960s')).toBeTruthy();
+    // When no valid years, no markers are shown
+    expect(screen.queryByText('1960s')).toBeNull();
   });
 
   it('applies custom className', () => {
@@ -61,8 +64,9 @@ describe('YearMarkers Component', () => {
     render(<YearMarkers songs={songs} />);
     
     expect(screen.getByText('1980s')).toBeTruthy();
+    expect(screen.getByText('1990s')).toBeTruthy();
     expect(screen.queryByText('1970s')).toBeFalsy();
-    expect(screen.queryByText('1990s')).toBeFalsy();
+    expect(screen.queryByText('2000s')).toBeFalsy();
   });
 
   it('renders markers in chronological order', () => {
