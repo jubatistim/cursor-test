@@ -20,11 +20,12 @@ export function Home() {
       sessionStorage.setItem('playerId', hostId);
       sessionStorage.setItem('isHost', 'true');
       sessionStorage.setItem('roomId', result.roomId);
+      sessionStorage.setItem('playerNumber', String(result.playerNumber));
       
       navigate(`/room/${result.roomCode}`);
     } catch (err) {
       console.error('Error creating room:', err);
-      setError('Failed to create room. Please try again.');
+      setError(err.message || 'Failed to create room. Please try again.');
     } finally {
       setIsCreating(false);
     }

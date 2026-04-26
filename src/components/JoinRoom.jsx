@@ -29,6 +29,7 @@ export function JoinRoom({ onJoinSuccess, onCancel }) {
       sessionStorage.setItem('playerId', result.playerId);
       sessionStorage.setItem('isHost', 'false');
       sessionStorage.setItem('roomId', result.roomId);
+      sessionStorage.setItem('playerNumber', String(result.playerNumber));
 
       onJoinSuccess(roomCode);
     } catch (err) {

@@ -1,26 +1,26 @@
 installation:
   version: 6.5.0
   installDate: 2026-04-25T22:18:53.870Z
-  lastUpdated: 2026-04-26T05:22:35.875Z
+  lastUpdated: 2026-04-26T06:04:40.227Z
 modules:
   - name: core
     version: 6.5.0
     installDate: 2026-04-25T22:18:53.079Z
-    lastUpdated: 2026-04-26T05:22:35.803Z
+    lastUpdated: 2026-04-26T06:04:39.938Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
     version: 6.5.0
     installDate: 2026-04-25T22:18:53.066Z
-    lastUpdated: 2026-04-26T05:22:35.803Z
+    lastUpdated: 2026-04-26T06:04:39.938Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmb
     version: v1.7.0
     installDate: 2026-04-25T22:18:53.146Z
-    lastUpdated: 2026-04-26T05:22:35.821Z
+    lastUpdated: 2026-04-26T06:04:39.956Z
     source: external
     npmPackage: bmad-builder
     repoUrl: https://github.com/bmad-code-org/bmad-builder
@@ -29,7 +29,7 @@ modules:
   - name: cis
     version: v0.2.0
     installDate: 2026-04-25T22:18:53.225Z
-    lastUpdated: 2026-04-26T05:22:35.838Z
+    lastUpdated: 2026-04-26T06:04:39.974Z
     source: external
     npmPackage: bmad-creative-intelligence-suite
     repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
@@ -38,7 +38,7 @@ modules:
   - name: gds
     version: v0.4.0
     installDate: 2026-04-25T22:20:19.394Z
-    lastUpdated: 2026-04-26T05:22:35.856Z
+    lastUpdated: 2026-04-26T06:04:40.189Z
     source: external
     npmPackage: bmad-game-dev-studio
     repoUrl: https://github.com/bmad-code-org/bmad-module-game-dev-studio
@@ -47,7 +47,7 @@ modules:
   - name: tea
     version: v1.15.1
     installDate: 2026-04-25T22:18:53.764Z
-    lastUpdated: 2026-04-26T05:22:35.875Z
+    lastUpdated: 2026-04-26T06:04:40.227Z
     source: external
     npmPackage: bmad-method-test-architecture-enterprise
     repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
@@ -60,3 +60,4 @@ ides:
   - cline
   - gemini
   - antigravity
+  - mistral-vibe

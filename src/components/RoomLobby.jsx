@@ -7,7 +7,9 @@ export function RoomLobby({ roomCode }) {
   const [players, setPlayers] = useState([]);
   const [isHost, setIsHost] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const timeoutRef = useRef(null);
+  const channelRef = useRef(null);
 
   useEffect(() => {
     const initializeLobby = async () => {
@@ -17,6 +19,7 @@ export function RoomLobby({ roomCode }) {
         setupRealtimeSubscription();
       } catch (error) {
         console.error('Error initializing lobby:', error);
+        setError('Failed to load room data. Please refresh the page.');
       } finally {
         setLoading(false);
       }
@@ -26,8 +29,17 @@ export function RoomLobby({ roomCode }) {
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      // Clean up realtime subscription
+      cleanupRealtimeSubscription();
     };
   }, [roomCode]);
+
+  const cleanupRealtimeSubscription = () => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+  };
 
   const loadPlayers = async () => {
     try {
@@ -36,16 +48,24 @@ export function RoomLobby({ roomCode }) {
       setPlayers(playersData);
     } catch (error) {
       console.error('Error loading players:', error);
+      setError('Failed to load player data.');
     }
   };
 
   const setupRealtimeSubscription = () => {
     const roomId = sessionStorage.getItem('roomId');
-    if (!roomId) return;
+    if (!roomId) {
+      console.warn('No roomId found in sessionStorage for realtime subscription');
+      return;
+    }
+
+    // Clean up any existing subscription
+    cleanupRealtimeSubscription();
 
     // Subscribe to changes in the players table for this room
+    // Use parameterized filter for security
     const channel = supabase
-      .channel('room_players')
+      .channel('room_players_' + roomId)
       .on(
         'postgres_changes',
         {
@@ -59,10 +79,14 @@ export function RoomLobby({ roomCode }) {
           loadPlayers(); // Reload players when changes occur
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+      });
+
+    channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      cleanupRealtimeSubscription();
     };
   };
 
@@ -83,7 +107,10 @@ export function RoomLobby({ roomCode }) {
 
   const getPlayerStatus = (playerNumber) => {
     const player = players.find(p => p.player_number === playerNumber);
-    return player ? 'Joined' : 'Waiting...';
+    if (player) {
+      return isHost && playerNumber === 1 ? 'Joined (You)' : 'Joined';
+    }
+    return 'Waiting...';
   };
 
   const getPlayerStatusClass = (playerNumber) => {
@@ -102,6 +129,7 @@ export function RoomLobby({ roomCode }) {
   return (
     <div className="lobby-container">
       <h2>Room Lobby</h2>
+      {error && <p className="error-message">{error}</p>}
       <div className="room-code-display">
         <h1>{roomCode}</h1>
         <button
