@@ -21,3 +21,6 @@
 - No type definitions (PropTypes/TypeScript) on new components
 - No canvas DPI scaling for high-resolution displays
 
+## Deferred from: code review of 6-3-rematch (2026-04-27)
+- Unvalidated roomCode navigation - pre-existing, not caused by this change [EndScreen.jsx:67,71,73]
+

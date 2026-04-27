@@ -238,6 +238,127 @@ export const gameService = {
   },
 
   /**
+   * Start a new match for a rematch in the same room.
+   * Creates a new match with reset game states for all players.
+   * This triggers RoomLobby's INSERT subscription for automatic navigation.
+   * @param {string} matchId - The previous match ID to get room context from
+   * @returns {Promise<Object>} New match data and game states
+   */
+  async resetGame(matchId) {
+    if (!matchId) {
+      throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
+    }
+
+    if (!matchId.trim()) {
+      throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
+    }
+
+    // Get existing match to retrieve room_id and verify it exists
+    const { data: oldMatch, error: matchFetchError } = await supabase
+      .from('matches')
+      .select('id, room_id, status')
+      .eq('id', matchId)
+      .single();
+
+    if (matchFetchError) {
+      console.error('resetGame match fetch error:', matchFetchError);
+      throw new Error(SANITIZED_ERRORS.NOT_FOUND);
+    }
+
+    if (!oldMatch) {
+      throw new Error(SANITIZED_ERRORS.NOT_FOUND);
+    }
+
+    const roomId = oldMatch.room_id;
+    if (!roomId) {
+      throw new Error(SANITIZED_ERRORS.NOT_FOUND);
+    }
+
+    // Get all players in the room for the old match
+    const { data: oldGameStates, error: gsError } = await supabase
+      .from('game_states')
+      .select('player_id')
+      .eq('match_id', matchId);
+
+    if (gsError) {
+      console.error('resetGame game_states fetch error:', gsError);
+      throw new Error(SANITIZED_ERRORS.SAVE_FAILED);
+    }
+
+    const playerIds = oldGameStates.map(gs => gs.player_id);
+
+    // Create new match with atomic transaction approach
+    // First create the new match
+    const { data: newMatch, error: newMatchError } = await supabase
+      .from('matches')
+      .insert([
+        {
+          room_id: roomId,
+          status: 'active',
+          current_round: 1,
+          max_score: 10,
+          updated_at: new Date().toISOString()
+        }
+      ])
+      .select()
+      .single();
+
+    if (newMatchError) {
+      console.error('resetGame new match creation error:', newMatchError);
+      throw new Error(SANITIZED_ERRORS.SAVE_FAILED);
+    }
+
+    const newMatchId = newMatch.id;
+
+    // Create new game states for all players with reset values
+    const newGameStates = playerIds.map(playerId => ({
+      match_id: newMatchId,
+      player_id: playerId,
+      score: 0,
+      correct_placements: 0,
+      timeline: [],
+      placement_status: 'playing_snippet',
+      updated_at: new Date().toISOString()
+    }));
+
+    const { data: createdGameStates, error: gsCreateError } = await supabase
+      .from('game_states')
+      .insert(newGameStates)
+      .select();
+
+    if (gsCreateError) {
+      console.error('resetGame game_states create error:', gsCreateError);
+      // Cleanup: delete the new match if game states creation failed
+      await supabase.from('matches').delete().eq('id', newMatchId);
+      throw new Error(SANITIZED_ERRORS.SAVE_FAILED);
+    }
+
+    // TODO: AC Requirement - "Ensure new tracks are loaded from the Spotify catalog and don't reuse tracks from the previous match immediately"
+    // This requires a songService.getRandomUnusedSongs() or similar to be implemented.
+    // When song service is available, add: await songService.loadNewTracks(roomId);
+
+    // Mark old match as finished - use transaction-like approach
+    const { error: finishError } = await supabase
+      .from('matches')
+      .update({
+        status: 'finished',
+        finished_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', matchId);
+
+    if (finishError) {
+      console.error('resetGame finish old match error:', finishError);
+      // Non-fatal: new match is created and will work, but old match cleanup failed
+    }
+
+    return {
+      match: newMatch,
+      gameStates: createdGameStates
+    };
+  },
+
+  /**
    * Check win condition after correct placements update and automatically transition match to finished if won.
    * This is called after each placement is confirmed to immediately detect and mark wins.
    * Note: Uses correct placements count per AC requirement (10 correct placements to win).

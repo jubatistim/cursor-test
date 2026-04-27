@@ -94,6 +94,7 @@ export default function GamePage() {
         winnerId={match.winner_id}
         currentPlayerId={playerId}
         roomCode={roomCode}
+        matchId={match.id}
       />
     );
   }

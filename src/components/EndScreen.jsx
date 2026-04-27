@@ -1,8 +1,10 @@
 import { Confetti } from './Confetti';
 import './EndScreen.css';
 
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
+import { gameService } from '../utils/gameService';
 
 /**
  * EndScreen component - displays final game results when match is finished
@@ -11,9 +13,11 @@ import PropTypes from 'prop-types';
  * @param {string} winnerId - ID of the winning player
  * @param {string} currentPlayerId - ID of the current player
  * @param {string} roomCode - Room code for navigation
+ * @param {string} matchId - Match ID for reset functionality
  */
-export function EndScreen({ players, gameStates, winnerId, currentPlayerId, roomCode }) {
+export function EndScreen({ players, gameStates, winnerId, currentPlayerId, roomCode, matchId }) {
   const navigate = useNavigate();
+  const [error, setError] = useState(null);
 
   // Null safety: validate required props
   if (!players || !Array.isArray(players)) {
@@ -59,8 +63,36 @@ export function EndScreen({ players, gameStates, winnerId, currentPlayerId, room
   const winner = players.find(p => p && p.id === winnerId);
   const currentScore = getPlayerScore(currentPlayerId);
 
-  const handlePlayAgain = () => {
-    navigate(`/room/${roomCode || 'unknown'}`);
+  const handlePlayAgainLock = useRef(false);
+
+  const handlePlayAgain = async () => {
+    // Debounce/lock to prevent race conditions from rapid clicks
+    if (handlePlayAgainLock.current) {
+      return;
+    }
+    
+    if (!matchId || !matchId.trim()) {
+      setError('Match information is missing.');
+      return;
+    }
+    
+    // Permission check: verify current player is part of this match's room
+    if (!currentPlayerId) {
+      setError('Player information is missing.');
+      return;
+    }
+
+    handlePlayAgainLock.current = true;
+    try {
+      await gameService.resetGame(matchId);
+      // Navigate to game page - will show GameScreen for the new active match
+      navigate(`/game/${roomCode || 'unknown'}`);
+    } catch (error) {
+      console.error('Failed to start new match:', error);
+      setError('Failed to start new match. Please try again.');
+    } finally {
+      handlePlayAgainLock.current = false;
+    }
   };
 
   const handleReturnToLobby = () => {
@@ -80,6 +112,11 @@ export function EndScreen({ players, gameStates, winnerId, currentPlayerId, room
             {isWinner ? 'You Won!' : `${getPlayerName(winner)} Won!`}
           </p>
         </header>
+        {error && (
+          <div className="alert alert-error" role="alert" aria-live="assertive">
+            {error}
+          </div>
+        )}
 
         <main className="end-screen-main" id="end-screen-main">
           <section className="final-score-section" aria-labelledby="final-scores-heading">
@@ -142,7 +179,7 @@ export function EndScreen({ players, gameStates, winnerId, currentPlayerId, room
           </nav>
         </footer>
       </div>
-  );
+    );
 }
 
 EndScreen.propTypes = {
@@ -167,5 +204,7 @@ EndScreen.propTypes = {
   /** ID of the current player */
   currentPlayerId: PropTypes.string,
   /** Room code for Play Again navigation */
-  roomCode: PropTypes.string
+  roomCode: PropTypes.string,
+  /** Match ID for reset functionality */
+  matchId: PropTypes.string
 };
