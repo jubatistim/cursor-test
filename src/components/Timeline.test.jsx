@@ -1,5 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+
+// Mock dragUtils for desktop testing
+vi.mock('../utils/dragUtils', () => ({
+  supportsTouch: () => false,
+  isDesktopDevice: () => true,
+  getDragEventHandlers: () => ({
+    dragStart: 'dragstart',
+    dragMove: 'dragover',
+    dragEnd: 'dragend',
+    drop: 'drop'
+  }),
+  handleKeyboardNavigation: vi.fn(),
+  getDropTargetIndex: vi.fn(),
+  throttle: vi.fn((fn) => fn),
+  createDragImage: vi.fn(),
+  cleanupDragImage: vi.fn()
+}));
+
 import { Timeline } from '../components/Timeline';
 
 describe('Timeline Component', () => {
@@ -44,7 +62,7 @@ describe('Timeline Component', () => {
 
     const dropZone = screen.getAllByTestId('drop-zone')[0];
     const mockDataTransfer = {
-      getData: vi.fn(() => JSON.stringify({ song: mockSongs[0], index: 0 })),
+      getData: vi.fn(() => JSON.stringify({ index: 0 })),
     };
 
     // First trigger drag start to set draggedSong state
@@ -58,7 +76,12 @@ describe('Timeline Component', () => {
     // Then drop
     fireEvent.drop(dropZone, { dataTransfer: mockDataTransfer });
 
-    expect(mockOnSongDrop).toHaveBeenCalledWith(mockSongs[0], 0, 0);
+    // draggedSong contains { ...mockSongs[0], originalIndex: 0 }
+    expect(mockOnSongDrop).toHaveBeenCalledWith(
+      expect.objectContaining({ id: mockSongs[0].id, title: mockSongs[0].title }),
+      0,
+      0
+    );
   });
 
   it('shows drop zone indicators when dragging over', () => {
@@ -184,6 +207,104 @@ describe('Timeline Component', () => {
       // Verify locked card has correct accessibility attributes
       expect(lockedSong.getAttribute('aria-grabbed')).toBe('false');
       expect(lockedSong.getAttribute('aria-label')).toContain('Locked card, cannot be moved');
+    });
+  });
+
+  describe('Desktop Controls', () => {
+
+    it('applies desktop-drop-zone class to drop zones on desktop', () => {
+      render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+      const dropZones = screen.getAllByTestId('drop-zone');
+      dropZones.forEach(zone => {
+        expect(zone.className).toContain('desktop-drop-zone');
+      });
+    });
+
+    it('applies desktop-song-item class to song items on desktop', () => {
+      render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+      const songItems = screen.getAllByText(/Song/).map(el => el.closest('.song-item'));
+      songItems.forEach(item => {
+        expect(item.className).toContain('desktop-song-item');
+      });
+    });
+
+    it('does not apply desktop-song-item class to locked cards', () => {
+      const lockedSongs = [
+        { id: '1', title: 'Locked Song', artist: 'Artist One', release_year: 1985, is_locked: true }
+      ];
+      
+      render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const lockedSong = screen.getByText('Locked Song').closest('.song-item');
+      expect(lockedSong.className).not.toContain('desktop-song-item');
+    });
+
+    it('supports keyboard drop zone activation with Space key', () => {
+      render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+      const dropZone = screen.getAllByTestId('drop-zone')[0];
+      
+      // First set up dragged song state
+      const songItem = screen.getByText('Song One').closest('.song-item');
+      const dragStartDataTransfer = {
+        effectAllowed: 'move',
+        setData: vi.fn(),
+      };
+      fireEvent.dragStart(songItem, { dataTransfer: dragStartDataTransfer });
+
+      // Then activate drop zone with keyboard
+      fireEvent.keyDown(dropZone, { key: ' ' });
+
+      expect(mockOnSongDrop).toHaveBeenCalled();
+    });
+
+    it('supports keyboard drop zone activation with Enter key', () => {
+      render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+      const dropZone = screen.getAllByTestId('drop-zone')[0];
+      
+      // First set up dragged song state
+      const songItem = screen.getByText('Song One').closest('.song-item');
+      const dragStartDataTransfer = {
+        effectAllowed: 'move',
+        setData: vi.fn(),
+      };
+      fireEvent.dragStart(songItem, { dataTransfer: dragStartDataTransfer });
+
+      // Then activate drop zone with keyboard
+      fireEvent.keyDown(dropZone, { key: 'Enter' });
+
+      expect(mockOnSongDrop).toHaveBeenCalled();
+    });
+
+    it('has proper ARIA attributes for drop zones', () => {
+      render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+      const dropZones = screen.getAllByTestId('drop-zone');
+      
+      dropZones.forEach((zone, index) => {
+        expect(zone.getAttribute('role')).toBe('button');
+        expect(zone.getAttribute('tabIndex')).toBe('0');
+        expect(zone.getAttribute('aria-label')).toContain('Drop zone');
+        if (index < mockSongs.length) {
+          expect(zone.getAttribute('aria-label')).toContain(mockSongs[index].title);
+        }
+      });
+    });
+
+    it('supports keyboard navigation with arrow keys', () => {
+      render(<Timeline songs={mockSongs} onSongDrop={mockOnSongDrop} />);
+
+      const timeline = screen.getByRole('list');
+      
+      // Test arrow key navigation
+      fireEvent.keyDown(timeline, { key: 'ArrowDown' });
+      fireEvent.keyDown(timeline, { key: 'ArrowUp' });
+      
+      // Should not crash and should handle keyboard events
+      expect(timeline).toBeTruthy();
     });
   });
 });

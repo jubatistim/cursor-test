@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { supportsTouch, getDragEventHandlers, handleKeyboardNavigation, getDropTargetIndex } from '../utils/dragUtils';
+import { supportsTouch, getDragEventHandlers, handleKeyboardNavigation, getDropTargetIndex, createDragImage, cleanupDragImage, isDesktopDevice as checkIsDesktopDevice } from '../utils/dragUtils';
 
 import { DragPreview } from './DragPreview';
 
@@ -19,14 +19,32 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
   const timelineRef = useRef(null);
   const touchStartY = useRef(null);
   const touchStartTime = useRef(null);
+  const dragImageRef = useRef(null);
 
   const isTouchDevice = supportsTouch();
+  const isDesktopDevice = checkIsDesktopDevice();
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (dragImageRef.current) {
+        cleanupDragImage(dragImageRef.current);
+        dragImageRef.current = null;
+      }
+    };
+  }, []);
 
   // Handle drag start for mouse
   const handleDragStart = (e, song, index) => {
     setDraggedSong({ ...song, originalIndex: index });
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', JSON.stringify({ song, index }));
+    // Use sanitized, minimal data to prevent XSS
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      songId: song.id,
+      songTitle: song.title,
+      songArtist: song.artist,
+      index: index
+    }));
   };
 
   // Handle touch start for mobile
@@ -100,13 +118,20 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
     try {
       const data = JSON.parse(e.dataTransfer.getData('text/plain'));
       if (onSongDrop) {
-        // Correctly handle both current song placement and reordering
-        const songToDrop = data.song || draggedSong;
+        // Handle sanitized data format (songId, songTitle, songArtist) or legacy format
+        // Always use draggedSong from state for full song data
+        const songToDrop = draggedSong;
         const fromIndex = data.index !== undefined ? data.index : draggedSong.originalIndex;
         onSongDrop(songToDrop, fromIndex, targetIndex);
       }
     } catch (error) {
       console.error('Error parsing drag data:', error);
+    }
+
+    // Clean up drag image
+    if (dragImageRef.current) {
+      cleanupDragImage(dragImageRef.current);
+      dragImageRef.current = null;
     }
 
     setDraggedSong(null);
@@ -115,6 +140,11 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
   // Handle drag end for mouse
   const handleDragEnd = () => {
+    // Clean up drag image
+    if (dragImageRef.current) {
+      cleanupDragImage(dragImageRef.current);
+      dragImageRef.current = null;
+    }
     setDraggedSong(null);
     setDropTargetIndex(null);
     setMousePosition({ x: 0, y: 0 });
@@ -187,7 +217,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
       <div className="timeline-container">
         {songs.length === 0 ? (
           <div
-            className={`drop-zone empty-drop-zone ${dropTargetIndex === 0 ? 'active' : ''}`}
+            className={`drop-zone empty-drop-zone ${dropTargetIndex === 0 ? 'active' : ''} ${isDesktopDevice ? 'desktop-drop-zone' : ''}`}
             data-testid="drop-zone"
             onDragOver={(e) => handleDragOver(e, 0)}
             onDragLeave={handleDragLeave}
@@ -227,7 +257,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
             >
               {/* Drop zone before this item */}
               <div
-                className={`drop-zone ${dropTargetIndex === index ? 'active' : ''}`}
+                className={`drop-zone ${dropTargetIndex === index ? 'active' : ''} ${isDesktopDevice ? 'desktop-drop-zone' : ''}`}
                 data-testid="drop-zone"
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragLeave={handleDragLeave}
@@ -252,7 +282,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
               {/* Song item - draggable */}
               <div
-                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''} ${revealed && song.id === currentSongId ? (playerResult.isCorrect ? 'correct' : 'incorrect') : ''} ${song.is_locked ? 'locked' : ''}`}
+                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''} ${revealed && song.id === currentSongId ? (playerResult.isCorrect ? 'correct' : 'incorrect') : ''} ${song.is_locked ? 'locked' : ''} ${isDesktopDevice && !revealed && !song.is_locked ? 'desktop-song-item' : ''}`}
                 draggable={!revealed && !song.is_locked}
                 onDragStart={revealed || song.is_locked ? undefined : (e) => handleDragStart(e, song, index)}
                 onDragEnd={revealed || song.is_locked ? undefined : handleDragEnd}
@@ -313,7 +343,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
         {songs.length > 0 && (
           <div
-            className={`drop-zone end-zone ${dropTargetIndex === songs.length ? 'active' : ''}`}
+            className={`drop-zone end-zone ${dropTargetIndex === songs.length ? 'active' : ''} ${isDesktopDevice ? 'desktop-drop-zone' : ''}`}
             data-testid="drop-zone"
             onDragOver={(e) => handleDragOver(e, songs.length)}
             onDragLeave={handleDragLeave}

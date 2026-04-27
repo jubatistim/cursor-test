@@ -311,9 +311,28 @@ p { margin: 0; }
   transition: all 0.2s;
 }
 
+/* Desktop-specific drop zone styles */
+.drop-zone.desktop-drop-zone {
+  border: 2px dashed transparent;
+  cursor: copy;
+}
+
+.drop-zone.desktop-drop-zone:hover {
+  background: rgba(170, 59, 255, 0.05);
+  border-color: rgba(170, 59, 255, 0.3);
+  transform: scaleY(1.2);
+}
+
 .drop-zone.active {
   background: rgba(170, 59, 255, 0.1);
   border: 2px solid var(--accent);
+}
+
+.drop-zone.desktop-drop-zone.active {
+  background: rgba(170, 59, 255, 0.15);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 15px rgba(170, 59, 255, 0.4);
+  transform: scaleY(1.3);
 }
 
 .drop-indicator {
@@ -363,14 +382,38 @@ p { margin: 0; }
   margin-bottom: 0.25rem;
 }
 
-.song-item:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+/* Desktop-specific song item styles */
+.song-item.desktop-song-item {
+  cursor: grab;
+}
+
+.song-item.desktop-song-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   border-color: var(--accent);
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, var(--bg), rgba(170, 59, 255, 0.05));
+}
+
+.song-item.desktop-song-item:active {
+  cursor: grabbing;
+  transform: translateY(0) scale(0.98);
 }
 
 .song-item.dragging {
   opacity: 0.5;
   transform: rotate(2deg);
+}
+
+.song-item.desktop-song-item.dragging {
+  cursor: grabbing;
+  transform: rotate(2deg) scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Fallback for non-desktop hover */
+.song-item:hover:not(.desktop-song-item) {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--accent);
 }
 
 .song-info {
@@ -420,7 +463,30 @@ p { margin: 0; }
   max-width: 300px;
 }
 
-.song-card:hover {
+/* Desktop-specific hover states */
+.song-card.desktop-hover {
+  cursor: grab;
+}
+
+.song-card.desktop-hover:hover {
+  box-shadow: 0 6px 20px rgba(170, 59, 255, 0.3);
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--accent-hover);
+}
+
+.song-card.desktop-hover:active {
+  cursor: grabbing;
+  transform: translateY(-2px) scale(1.01);
+}
+
+.song-card.dragging {
+  cursor: grabbing;
+  opacity: 0.8;
+  transform: rotate(2deg) scale(1.05);
+}
+
+/* Fallback for non-desktop hover */
+.song-card:hover:not(.desktop-hover) {
   box-shadow: 0 4px 12px rgba(170, 59, 255, 0.2);
   transform: translateY(-2px);
 }
@@ -681,16 +747,42 @@ p { margin: 0; }
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
 }
+
+/* Desktop-specific button enhancements */
+@media (hover: hover) and (pointer: fine) {
+  .confirm-button:hover:not(:disabled) {
+    background: var(--accent-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(170, 59, 255, 0.3);
+  }
+  
+  .confirm-button:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(170, 59, 255, 0.2);
+  }
+  
+  .confirm-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(170, 59, 255, 0.2);
+  }
+}
+
+/* Fallback for non-hover devices */
 .confirm-button:hover:not(:disabled) {
   background: var(--accent-hover);
 }
+
 .confirm-button--disabled,
 .confirm-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
 .confirm-button--loading {
   opacity: 0.7;
   cursor: wait;

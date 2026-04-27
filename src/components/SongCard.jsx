@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { createDragImage, supportsTouch, getDragEventHandlers } from '../utils/dragUtils';
+import { createDragImage, cleanupDragImage, supportsTouch, getDragEventHandlers, isDesktopDevice as checkIsDesktopDevice } from '../utils/dragUtils';
 
 /**
  * SongCard component - Draggable song card for timeline placement
@@ -14,6 +14,7 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
   }
 
   const [isDragging, setIsDragging] = useState(false);
+  const dragImageRef = useRef(null);
   const cardRef = useRef(null);
 
   const handleDragStart = useCallback((e) => {
@@ -24,17 +25,27 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
     
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', JSON.stringify({ song }));
+      // Use minimal, sanitized data to prevent XSS
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        songId: song.id,
+        songTitle: song.title,
+        songArtist: song.artist
+      }));
       
       // Create custom drag image for better UX
       if (cardRef.current) {
-        createDragImage(cardRef.current, e);
+        dragImageRef.current = createDragImage(cardRef.current, e);
       }
     }
   }, [onDragStart, song]);
 
   const handleDragEnd = useCallback(() => {
     setIsDragging(false);
+    // Clean up drag image
+    if (dragImageRef.current) {
+      cleanupDragImage(dragImageRef.current);
+      dragImageRef.current = null;
+    }
   }, []);
 
   const handleTouchStart = useCallback((e) => {
@@ -78,6 +89,7 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
   // Get appropriate event handlers based on device
   const dragHandlers = getDragEventHandlers();
   const isTouchDevice = supportsTouch();
+  const isDesktop = checkIsDesktopDevice();
 
   // Determine status badge text
   const getStatusBadge = () => {
@@ -91,20 +103,20 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
   return (
     <div
       ref={cardRef}
-      className={`song-card ${className} ${isDragging ? 'dragging' : ''} ${revealed ? 'revealed' : ''} ${isCorrect === true ? 'correct' : ''} ${isCorrect === false ? 'incorrect' : ''}`}
-      draggable={!isTouchDevice && !revealed}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onTouchStart={isTouchDevice ? handleTouchStart : undefined}
-      onTouchEnd={isTouchDevice ? handleDragEnd : undefined}
-      onKeyDown={handleKeyDown}
+      className={`song-card ${className} ${isDragging ? 'dragging' : ''} ${revealed ? 'revealed' : ''} ${isCorrect === true ? 'correct' : ''} ${isCorrect === false ? 'incorrect' : ''} ${isDesktop && !revealed ? 'desktop-hover' : ''}`}
+      draggable={isDesktop && !revealed}
+      onDragStart={isDesktop && !revealed ? handleDragStart : undefined}
+      onDragEnd={isDesktop && !revealed ? handleDragEnd : undefined}
+      onTouchStart={isTouchDevice && !revealed ? handleTouchStart : undefined}
+      onTouchEnd={isTouchDevice && !revealed ? handleDragEnd : undefined}
+      onKeyDown={!revealed ? handleKeyDown : undefined}
       role="button"
       aria-label={revealed 
         ? `${song.title} by ${song.artist} - ${isCorrect ? 'Correct' : 'Incorrect'}`
         : `Drag ${song.title} by ${song.artist} to timeline. Press Space or Enter to grab.`
       }
       aria-grabbed={isDragging ? 'true' : 'false'}
-      tabIndex={0}
+      tabIndex={revealed ? -1 : 0}
     >
       <div className="song-card-content">
         <div className="song-info">

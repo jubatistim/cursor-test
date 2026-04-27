@@ -116,30 +116,55 @@ export function handleTouchDrag(event, callback) {
 }
 
 /**
- * Create drag image for better visual feedback
+ * Create lightweight drag image for better visual feedback
  * @param {HTMLElement} element - Element being dragged
  * @param {Event} event - Drag event
+ * @returns {HTMLElement|null} The drag image element for cleanup
  */
 export function createDragImage(element, event) {
   try {
-    const dragImage = element.cloneNode(true);
-    dragImage.style.opacity = '0.8';
+    const rect = element.getBoundingClientRect();
+    
+    // Create lightweight placeholder instead of cloning entire DOM
+    const dragImage = document.createElement('div');
+    dragImage.style.width = `${rect.width}px`;
+    dragImage.style.height = `${rect.height}px`;
+    dragImage.style.background = 'linear-gradient(135deg, rgba(170, 59, 255, 0.8), rgba(144, 43, 214, 0.8))';
+    dragImage.style.borderRadius = '8px';
     dragImage.style.transform = 'rotate(-2deg)';
     dragImage.style.position = 'absolute';
     dragImage.style.top = '-1000px';
+    dragImage.style.pointerEvents = 'none';
+    dragImage.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
 
     document.body.appendChild(dragImage);
-    event.dataTransfer.setDragImage(dragImage, event.offsetX, event.offsetY);
-
-    // Clean up after drag ends
-    setTimeout(() => {
-      if (document.body.contains(dragImage)) {
-        document.body.removeChild(dragImage);
-      }
-    }, 0);
+    event.dataTransfer.setDragImage(dragImage, event.offsetX || rect.width / 2, event.offsetY || rect.height / 2);
+    
+    return dragImage;
   } catch (error) {
     console.warn('Could not create drag image:', error);
+    return null;
   }
+}
+
+/**
+ * Clean up drag image after drag operation
+ * @param {HTMLElement|null} dragImage - The drag image to clean up
+ */
+export function cleanupDragImage(dragImage) {
+  if (dragImage && document.body.contains(dragImage)) {
+    document.body.removeChild(dragImage);
+  }
+}
+
+/**
+ * Check if device has fine pointer (desktop/mouse)
+ * @returns {boolean} Whether device has fine pointer (non-touch)
+ */
+export function isDesktopDevice() {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
 
 /**
@@ -147,7 +172,11 @@ export function createDragImage(element, event) {
  * @returns {boolean} Whether touch is supported
  */
 export function supportsTouch() {
-  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (typeof window === 'undefined') return false;
+  if (typeof navigator === 'undefined') return false;
+  // Check for touch support, but prioritize desktop experience on hybrid devices
+  const hasTouch = 'ontouchstart' in window || (navigator.maxTouchPoints > 0);
+  return hasTouch && !isDesktopDevice();
 }
 
 /**
