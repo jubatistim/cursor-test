@@ -73,7 +73,7 @@ development_status:
   5-1-reveal-correctness: done
   5-2-lock-correct-placements: done
   5-3-next-round-transition: done
-  5-4-timeout-handling: ready-for-dev
+  5-4-timeout-handling: review
   epic-5-retrospective: optional
 
   # Epic 6: Match Management

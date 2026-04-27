@@ -21,10 +21,22 @@ import { WaitingOverlay } from './WaitingOverlay';
 import { RevealOverlay } from './RevealOverlay';
 import { NextRoundTimer } from './NextRoundTimer';
 import { ScoreBoard } from './ScoreBoard';
-import { songService } from '../utils/songService';
+import { TurnTimer } from './TurnTimer';
 import { gameService } from '../utils/gameService';
 import { isPlacementCorrect } from '../utils/scoringUtils';
 import { addLockedCard, filterIncorrectCards, mergeLockedCards } from '../utils/timelineUtils';
+import { 
+  calculateTurnStartTime, 
+  calculateRemainingTime, 
+  createForfeitPayload, 
+  canPlayerPlace, 
+  handleReconnectionTimer,
+  checkPlayerTimeoutStatus,
+  withRetry,
+  setServerTimeOffset,
+  getServerTime
+} from '../utils/timerUtils';
+import { TurnTimerErrorBoundary } from './TurnTimer';
 
 /**
  * GameScreen component - Main game interface
@@ -84,6 +96,11 @@ export function GameScreen() {
   const [showNextRoundTimer, setShowNextRoundTimer] = useState(false);
   const [syncStats, setSyncStats] = useState(null);
   const [isSyncInProgress, setIsSyncInProgress] = useState(false);
+  
+  // Timer state for timeout handling
+  const [turnTimerActive, setTurnTimerActive] = useState(false);
+  const [turnStartTime, setTurnStartTime] = useState(null);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
   
   const [audioElementRef, setAudioElementRef] = useState(null);
   const replayAudioRef = useRef(null);
@@ -414,6 +431,27 @@ export function GameScreen() {
   const handleSnippetFinish = useCallback(async () => {
     setIsPlaying(false);
     
+    // Start the turn timer when snippet finishes
+    if (currentSong && currentRoundData && !hasTimedOut) {
+      const snippetDuration = currentSong.snippet_duration || 20;
+      const roundStartTime = currentRoundData.started_at ? new Date(currentRoundData.started_at).getTime() : Date.now();
+      // Calculate turn start time: round start + snippet duration
+      // In production, this should come directly from the server
+      const turnStart = roundStartTime + (snippetDuration * 1000);
+      
+      // Validate and set turn start time
+      try {
+        const validatedTurnStart = calculateTurnStartTime(turnStart);
+        console.log('Starting turn timer at:', validatedTurnStart);
+        setTurnStartTime(validatedTurnStart);
+        setTurnTimerActive(true);
+        setHasTimedOut(false);
+      } catch (err) {
+        console.error('Invalid turn start time:', err);
+        setError('Failed to start timer');
+      }
+    }
+    
     // Mark round as completed
     if (currentRoundData && currentRoundData.id) {
       try {
@@ -422,7 +460,7 @@ export function GameScreen() {
         console.error('Error completing round:', err);
       }
     }
-  }, [currentRoundData]);
+  }, [currentSong, currentRoundData, hasTimedOut]);
 
   // Handle replay request
   const handleReplayRequest = useCallback(() => {
@@ -491,6 +529,87 @@ export function GameScreen() {
     setIsPlaying(false);
   }, []);
 
+  // Queue for pending actions when offline
+  const pendingActionsRef = useRef([]);
+  
+  // Handle timeout - automatically forfeit the round with network resilience
+  const handleTimeout = useCallback(async () => {
+    if (!match?.id || !playerId || !currentSong?.id || !currentRoundData?.id) {
+      console.warn('Cannot handle timeout: missing required data');
+      return;
+    }
+
+    // First, check if player already timed out server-side to avoid duplicate forfeits
+    try {
+      const timeoutStatus = await checkPlayerTimeoutStatus(playerId, currentRoundData.id, supabase);
+      if (timeoutStatus.has_timed_out) {
+        console.log('Player already forfeited server-side, skipping timeout handling');
+        setHasTimedOut(true);
+        setTurnTimerActive(false);
+        return;
+      }
+    } catch (err) {
+      console.warn('Could not verify timeout status, proceeding with forfeit:', err);
+    }
+
+    console.log('Player timed out, auto-forfeiting round');
+    setHasTimedOut(true);
+    setTurnTimerActive(false);
+
+    // Create forfeit payload
+    const forfeitPayload = createForfeitPayload(playerId, currentRoundData.id, currentSong);
+    
+    // Submit forfeit with retry logic for network resilience
+    try {
+      await withRetry(async () => {
+        const { error } = await supabase
+          .from('game_states')
+          .update({
+            placement_status: 'waiting_for_opponent',
+            timeline: forfeitPayload.timeline,
+            updated_at: new Date().toISOString()
+          })
+          .eq('match_id', match.id)
+          .eq('player_id', playerId);
+        
+        if (error) {
+          throw error;
+        }
+      }, 3, 1000); // 3 retries with 1s initial delay
+
+      // Set placement status to waiting for opponent
+      setPlacementStatus('waiting_for_opponent');
+      setPlacedSongs([]);
+
+      // Check if all players have now submitted (including this forfeit)
+      const allSubmitted = allPlayersSubmitted();
+      if (allSubmitted) {
+        // Trigger reveal phase with retry
+        await withRetry(async () => {
+          await triggerReveal();
+        }, 3, 1000);
+      }
+
+    } catch (err) {
+      console.error('Error handling timeout after retries:', err);
+      setError('Failed to process timeout - will retry later');
+      
+      // Queue for later resolution
+      pendingActionsRef.current.push({
+        type: 'TIMEOUT_FORFEIT',
+        payload: {
+          forfeitPayload,
+          matchId: match.id,
+          playerId,
+          allPlayersSubmitted: () => allPlayersSubmitted(),
+          triggerReveal: () => triggerReveal()
+        },
+        timestamp: getServerTime(),
+        retries: 3
+      });
+    }
+  }, [match?.id, playerId, currentSong, currentRoundData, allPlayersSubmitted, triggerReveal]);
+
   // Start playback when song is loaded and sync is active
   useEffect(() => {
     let cancelled = false;
@@ -543,6 +662,39 @@ export function GameScreen() {
     
     return () => { cancelled = true; };
   }, [currentSong, hasStartedRound, isPlaying, handlePlaybackError, handleSnippetFinish]);
+
+  // Handle reconnection scenarios - restore timer state if needed
+  useEffect(() => {
+    if (!currentRoundData || !currentSong || !hasStartedRound || hasTimedOut) {
+      return;
+    }
+
+    const snippetDuration = currentSong.snippet_duration || 20;
+    const roundStartTime = currentRoundData.started_at ? new Date(currentRoundData.started_at).getTime() : Date.now();
+    const turnStart = roundStartTime + (snippetDuration * 1000);
+    const timerState = handleReconnectionTimer(currentRoundData, turnStart, getServerTime(), 60);
+    
+    if (timerState && !timerState.isExpired && placementStatus === 'placing') {
+      // Player disconnected during active timer, restore timer state
+      const snippetDuration = currentSong.snippet_duration || 20;
+      const roundStartTime = new Date(currentRoundData.started_at).getTime();
+      // Calculate turn start time: round start + snippet duration
+      const turnStart = roundStartTime + (snippetDuration * 1000);
+      
+      try {
+        const validatedTurnStart = calculateTurnStartTime(turnStart);
+        console.log('Restoring timer state after reconnection');
+        setTurnStartTime(validatedTurnStart);
+        setTurnTimerActive(true);
+      } catch (err) {
+        console.error('Invalid turn start time during reconnection:', err);
+      }
+    } else if (timerState && timerState.isExpired && !hasTimedOut) {
+      // Timer expired while disconnected, trigger timeout immediately
+      console.log('Timer expired during reconnection, triggering timeout');
+      handleTimeout();
+    }
+  }, [currentRoundData, currentSong, hasStartedRound, hasTimedOut, placementStatus, handleTimeout]);
 
   // Setup real-time subscriptions
   useEffect(() => {
@@ -837,6 +989,12 @@ export function GameScreen() {
   const handleNextRoundTimerComplete = useCallback(async () => {
     setShowNextRoundTimer(false);
     
+    // Reset timer state for new round
+    setTurnTimerActive(false);
+    setTurnStartTime(null);
+    setHasTimedOut(false);
+    setPlacementStatus('placing');
+    
     if (!match || !match.id || match.status !== 'active') {
       return;
     }
@@ -917,7 +1075,10 @@ export function GameScreen() {
   const handleConfirmPlacement = useCallback(async () => {
     if (!match?.id || !playerId || placedSongs.length === 0) return;
 
+    // Stop the turn timer when player confirms placement
+    setTurnTimerActive(false);
     setPlacementStatus('confirming');
+    
     try {
       await gameService.confirmPlacement(match.id, playerId, placedSongs);
       setPlacementStatus('waiting_for_opponent');
@@ -1130,6 +1291,21 @@ export function GameScreen() {
                       onDragStart={handleSongDragStart}
                       className="current-song-card"
                     />
+                    
+                    {/* Turn Timer - show when timer is active and player hasn't placed yet */}
+                    {turnTimerActive && placementStatus === 'placing' && (
+                      <div className="turn-timer-section">
+                        <h4>Time Remaining</h4>
+                        <TurnTimerErrorBoundary>
+                          <TurnTimer
+                            startTime={turnStartTime}
+                            duration={60}
+                            onTimeout={handleTimeout}
+                            isActive={turnTimerActive && !hasTimedOut}
+                          />
+                        </TurnTimerErrorBoundary>
+                      </div>
+                    )}
                   </div>
                 )}
 
