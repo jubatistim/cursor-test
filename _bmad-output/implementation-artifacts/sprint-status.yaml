@@ -84,7 +84,7 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: Controls
-  epic-7: in-progress
+  epic-7: done
   7-1-desktop-controls: done
   7-2-mobile-controls: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
