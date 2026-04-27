@@ -14,3 +14,10 @@
 - Audio element cleanup across components
 - SessionStorage quota handling
 
+## Deferred from: code review of 6-2-end-screen (2026-04-27)
+- Missing accessibility attributes on EndScreen interactive elements
+- Hardcoded magic numbers in Confetti component (particleCount=150, velocities, 5000ms duration)
+- Large inline CSS in EndScreen.jsx reduces maintainability
+- No type definitions (PropTypes/TypeScript) on new components
+- No canvas DPI scaling for high-resolution displays
+

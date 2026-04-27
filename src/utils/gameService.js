@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { checkWinCondition } from './winDetectionUtils';
+import { checkWinCondition, checkWinConditionByPlacements } from './winDetectionUtils';
 
 /**
  * Game service - placement confirmation and opponent sync
@@ -185,11 +185,12 @@ export const gameService = {
   },
 
   /**
-   * Mark a match as finished and update game_states to finished status.
+   * Mark a match as finished in the matches table.
    * Allows clients listening to Supabase to transition out of game loop.
+   * Note: Status is now tracked only in matches table for consistency.
    * @param {string} matchId
    * @param {string} winner - 'player_1', 'player_2', or 'draw'
-   * @returns {Promise<Array>} Updated game states
+   * @returns {Promise<Array>} Updated match data
    */
   async markMatchFinished(matchId, winner) {
     if (!matchId) {
@@ -201,10 +202,10 @@ export const gameService = {
     }
 
     // Check if match is already finished to prevent redundant operations
-    const { data: existingData, error: fetchError } = await supabase
-      .from('game_states')
-      .select('match_status, winner')
-      .eq('match_id', matchId)
+    const { data: existingMatch, error: fetchError } = await supabase
+      .from('matches')
+      .select('status')
+      .eq('id', matchId)
       .single();
 
     if (fetchError) {
@@ -212,49 +213,51 @@ export const gameService = {
       throw new Error(SANITIZED_ERRORS.SAVE_FAILED);
     }
 
-    if (existingData && existingData.match_status === 'finished') {
+    if (existingMatch && existingMatch.status === 'finished') {
       // Match is already finished, no need to update
-      return existingData;
+      return existingMatch;
     }
 
+    // Update only the matches table - single source of truth for match status
     const { data, error } = await supabase
-      .from('game_states')
+      .from('matches')
       .update({
-        match_status: 'finished',
-        winner,
-        updated_at: new Date().toISOString()
+        status: 'finished',
+        winner_id: winner,
+        finished_at: new Date().toISOString()
       })
-      .eq('match_id', matchId)
+      .eq('id', matchId)
       .select();
 
-          winner,
-          finished_at: new Date().toISOString()
-        },
-        created_at: new Date().toISOString()
-      })
-      .select();
-
-    if (notificationError) {
-      console.error('Failed to emit match finished notification:', notificationError);
-      // Don't fail the operation if notification fails
+    if (error) {
+      console.error('markMatchFinished error:', error);
+      throw new Error(SANITIZED_ERRORS.SAVE_FAILED);
     }
 
     return data;
   },
 
   /**
-   * Check win condition after score update and automatically transition match to finished if won.
-   * This is called after each score is saved to immediately detect and mark wins.
+   * Check win condition after correct placements update and automatically transition match to finished if won.
+   * This is called after each placement is confirmed to immediately detect and mark wins.
+   * Note: Uses correct placements count per AC requirement (10 correct placements to win).
    * @param {string} matchId
    * @param {number} playerNumber - 1 or 2
-   * @param {number} player1Score - Current player 1 score
-   * @param {number} player2Score - Current player 2 score
+   * @param {number} player1Placements - Current player 1 correct placements count
+   * @param {number} player2Placements - Current player 2 correct placements count
    * @returns {Promise<Object>} { winState: {isWinState, winner}, matchFinished: boolean }
    */
-  async checkAndApplyWinCondition(matchId, playerNumber, player1Score, player2Score) {
+  async checkAndApplyWinCondition(matchId, playerNumber, player1Placements, player2Placements) {
     if (!matchId) {
       throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
     }
+
+    const winState = checkWinConditionByPlacements(player1Placements, player2Placements);
+    let matchFinished = false;
+
+    if (winState.isWinState) {
+      // Update match status to finished
+      await this.markMatchFinished(matchId, winState.winner);
       matchFinished = true;
     }
 
