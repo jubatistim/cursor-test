@@ -1,0 +1,187 @@
+{
+  "findings": [
+    {
+      "id": 1,
+      "source": "blind+edge",
+      "title": "Multiple timer instances from rapid visibility toggles",
+      "detail": "Timer could be started multiple times causing multiple intervals to run simultaneously. Edge case: Rapid visibility toggles could create overlapping timers. Blind hunter noted: No handling for rapid visibility toggles - timer could be started multiple times.",
+      "location": "src/components/NextRoundTimer.jsx:26-41",
+      "classification": "patch"
+    },
+    {
+      "id": 2,
+      "source": "blind+edge",
+      "title": "Missing error handling for onComplete callback",
+      "detail": "If onComplete throws, the timer could break without completing. Edge case: onComplete callback throws error could crash timer. Blind hunter noted: Missing error handling for onComplete callback - if onComplete throws, the timer could break.",
+      "location": "src/components/NextRoundTimer.jsx:34-35",
+      "classification": "patch"
+    },
+    {
+      "id": 3,
+      "source": "blind+edge",
+      "title": "Invalid nextRoundNumber validation",
+      "detail": "No validation for negative or zero nextRoundNumber parameter. Edge case: Negative or zero nextRoundNumber could display invalid round. Blind hunter noted: No validation of nextRoundNumber parameter - could be negative or zero.",
+      "location": "src/components/NextRoundTimer.jsx:29",
+      "classification": "patch"
+    },
+    {
+      "id": 4,
+      "source": "blind+edge",
+      "title": "Progress calculation precision issues",
+      "detail": "Progress bar calculation could result in floating point precision errors. Edge case: Progress calculation precision errors could show invalid values. Blind hunter noted: Progress bar calculation could result in floating point precision issues.",
+      "location": "src/components/NextRoundTimer.jsx:67-68",
+      "classification": "patch"
+    },
+    {
+      "id": 5,
+      "source": "blind+edge",
+      "title": "Memory leaks from component unmounting",
+      "detail": "Component unmounting during active timer could cause memory leaks. Edge case: Component unmounts during timer leaves uncanceled timers. Blind hunter noted: No consideration for component unmounting during active timer.",
+      "location": "src/components/GameScreen.jsx:825-826",
+      "classification": "patch"
+    },
+    {
+      "id": 6,
+      "source": "edge",
+      "title": "Match becomes inactive during timer",
+      "detail": "If match becomes inactive during timer, timer completes but round doesn't start.",
+      "location": "src/components/GameScreen.jsx:143-144",
+      "classification": "patch"
+    },
+    {
+      "id": 7,
+      "source": "blind+edge",
+      "title": "Race condition with useEffect dependencies",
+      "detail": "startTimer dependency could cause infinite re-render loops. Edge case: startTimer dependency changes could cause infinite re-renders. Blind hunter noted: Potential race condition with useEffect dependencies - startTimer dependency could cause infinite re-renders.",
+      "location": "src/components/NextRoundTimer.jsx:46-51",
+      "classification": "patch"
+    },
+    {
+      "id": 8,
+      "source": "edge",
+      "title": "Unnecessary recalculations during renders",
+      "detail": "Component recalculates barWidth on every render while timer is active.",
+      "location": "src/components/NextRoundTimer.jsx:58-59",
+      "classification": "patch"
+    },
+    {
+      "id": 9,
+      "source": "edge",
+      "title": "Multiple reveal completions create timers",
+      "detail": "Multiple reveal completions could create multiple timer instances.",
+      "location": "src/components/GameScreen.jsx:814-815",
+      "classification": "patch"
+    },
+    {
+      "id": 10,
+      "source": "blind+edge",
+      "title": "Missing null checks for props",
+      "detail": "Component could crash if props are undefined. Edge case: Props undefined or null could crash component. Blind hunter noted: Missing null checks for props - component could crash if props are undefined.",
+      "location": "src/components/NextRoundTimer.jsx:22-24",
+      "classification": "patch"
+    },
+    {
+      "id": 11,
+      "source": "auditor",
+      "title": "Missing song fetch implementation",
+      "detail": "Violates AC 'fetch the next song from the catalog' - The timer completion handler calls startNewRound() but doesn't explicitly fetch the next song snippet.",
+      "location": "src/components/GameScreen.jsx:143-144",
+      "classification": "decision_needed"
+    },
+    {
+      "id": 12,
+      "source": "auditor",
+      "title": "Incomplete state transition",
+      "detail": "Violates AC 'transition the local state to playing_snippet' - No explicit state transition to playing_snippet mode found in the implementation.",
+      "location": "src/components/GameScreen.jsx:143-144",
+      "classification": "decision_needed"
+    },
+    {
+      "id": 13,
+      "source": "auditor",
+      "title": "Host-only timer display",
+      "detail": "Deviates from spec intent 'brief transition before the next song' - Non-host players see the timer but it doesn't function for them, creating inconsistent user experience.",
+      "location": "src/components/GameScreen.jsx:814-815",
+      "classification": "decision_needed"
+    },
+    {
+      "id": 14,
+      "source": "auditor",
+      "title": "Missing file structure compliance",
+      "detail": "Violates spec requirement 'Update loop state' in pages/game.jsx - Implementation updates components/GameScreen.jsx instead of pages/game.jsx.",
+      "location": "src/components/GameScreen.jsx",
+      "classification": "dismiss"
+    },
+    {
+      "id": 15,
+      "source": "auditor",
+      "title": "Timer not automatically started for all players",
+      "detail": "Violates AC 'Start a 3-second countdown automatically after the reveal phase' - Only host starts timer, non-hosts don't get automatic countdown.",
+      "location": "src/components/GameScreen.jsx:814-815",
+      "classification": "decision_needed"
+    },
+    {
+      "id": 16,
+      "source": "auditor",
+      "title": "No integration with song catalog",
+      "detail": "Violates technical requirement 'fetch the next song from the catalog' - No code found that interacts with song service or catalog during timer completion.",
+      "location": "src/components/GameScreen.jsx:143-144",
+      "classification": "decision_needed"
+    },
+    {
+      "id": 17,
+      "source": "blind",
+      "title": "Hardcoded 3-second duration reduces flexibility",
+      "detail": "Should be configurable via props for different game modes or preferences.",
+      "location": "src/components/NextRoundTimer.jsx:23",
+      "classification": "defer"
+    },
+    {
+      "id": 18,
+      "source": "blind",
+      "title": "Inconsistent accessibility labels",
+      "detail": "Progress bar and countdown have different label formats.",
+      "location": "src/components/NextRoundTimer.jsx:67-68,72-73",
+      "classification": "patch"
+    },
+    {
+      "id": 19,
+      "source": "blind",
+      "title": "Missing error boundaries",
+      "detail": "Component failures could crash the entire game.",
+      "location": "src/components/NextRoundTimer.jsx",
+      "classification": "defer"
+    },
+    {
+      "id": 20,
+      "source": "blind",
+      "title": "Overly complex timer logic",
+      "detail": "Could be simplified with setTimeout instead of setInterval.",
+      "location": "src/components/NextRoundTimer.jsx:26-41",
+      "classification": "defer"
+    },
+    {
+      "id": 21,
+      "source": "blind",
+      "title": "Missing keyboard navigation support",
+      "detail": "No keyboard navigation support for accessibility.",
+      "location": "src/components/NextRoundTimer.jsx",
+      "classification": "defer"
+    },
+    {
+      "id": 22,
+      "source": "blind",
+      "title": "No visual feedback for timer completion",
+      "detail": "No visual feedback for timer completion state.",
+      "location": "src/components/NextRoundTimer.jsx",
+      "classification": "defer"
+    }
+  ],
+  "summary": {
+    "total_findings": 22,
+    "dismissed": 1,
+    "patch": 10,
+    "decision_needed": 5,
+    "defer": 6
+  }
+}

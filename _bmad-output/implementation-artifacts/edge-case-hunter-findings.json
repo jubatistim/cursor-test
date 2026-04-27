@@ -1,0 +1,62 @@
+[
+  {
+    "location": "src/components/NextRoundTimer.jsx:26-41",
+    "trigger_condition": "Rapid visibility toggles",
+    "guard_snippet": "useRef to track active timer, prevent multiple intervals",
+    "potential_consequence": "Multiple timers running simultaneously"
+  },
+  {
+    "location": "src/components/NextRoundTimer.jsx:34-35",
+    "trigger_condition": "onComplete callback throws error",
+    "guard_snippet": "try { onComplete(); } catch (error) { console.error(error); }",
+    "potential_consequence": "Timer crashes without completing"
+  },
+  {
+    "location": "src/components/NextRoundTimer.jsx:29",
+    "trigger_condition": "Negative or zero nextRoundNumber",
+    "guard_snippet": "const displayRound = Math.max(1, nextRoundNumber);",
+    "potential_consequence": "Invalid round number displayed"
+  },
+  {
+    "location": "src/components/NextRoundTimer.jsx:67-68",
+    "trigger_condition": "Progress calculation precision errors",
+    "guard_snippet": "const newProgress = Math.max(0, Math.min(100, (newTime / 3) * 100));",
+    "potential_consequence": "Progress bar shows invalid values"
+  },
+  {
+    "location": "src/components/GameScreen.jsx:825-826",
+    "trigger_condition": "Component unmounts during timer",
+    "guard_snippet": "useEffect(() => { return () => setShowNextRoundTimer(false); }, []);",
+    "potential_consequence": "Memory leaks from uncanceled timers"
+  },
+  {
+    "location": "src/components/GameScreen.jsx:143-144",
+    "trigger_condition": "Match becomes inactive during timer",
+    "guard_snippet": "if (isHost && match?.id && match.status === 'active' && !showNextRoundTimer)",
+    "potential_consequence": "Timer completes but round doesn't start"
+  },
+  {
+    "location": "src/components/NextRoundTimer.jsx:46-51",
+    "trigger_condition": "startTimer dependency changes",
+    "guard_snippet": "const startTimerRef = useRef(startTimer); startTimerRef.current = startTimer;",
+    "potential_consequence": "Infinite re-render loops"
+  },
+  {
+    "location": "src/components/NextRoundTimer.jsx:58-59",
+    "trigger_condition": "Component renders while timer active",
+    "guard_snippet": "useMemo(() => `${progress}%`, [progress]);",
+    "potential_consequence": "Unnecessary recalculations each render"
+  },
+  {
+    "location": "src/components/GameScreen.jsx:814-815",
+    "trigger_condition": "Multiple reveal completions",
+    "guard_snippet": "if (isHost && !showNextRoundTimer) { setShowNextRoundTimer(true); }",
+    "potential_consequence": "Multiple timer instances created"
+  },
+  {
+    "location": "src/components/NextRoundTimer.jsx:22-24",
+    "trigger_condition": "Props undefined or null",
+    "guard_snippet": "const { isVisible = false, onComplete = () => {}, nextRoundNumber = 1 } = props;",
+    "potential_consequence": "Component crashes on invalid props"
+  }
+]

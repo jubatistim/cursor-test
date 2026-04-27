@@ -1,0 +1,4 @@
+Review this code diff with extreme skepticism. Find at least ten issues to fix or improve.
+
+DIFF:
+[The complete git diff output from the previous command]

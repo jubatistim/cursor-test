@@ -19,7 +19,9 @@ import { YearMarkers } from './YearMarkers';
 import { ConfirmButton } from './ConfirmButton';
 import { WaitingOverlay } from './WaitingOverlay';
 import { RevealOverlay } from './RevealOverlay';
+import { NextRoundTimer } from './NextRoundTimer';
 import { ScoreBoard } from './ScoreBoard';
+import { songService } from '../utils/songService';
 import { gameService } from '../utils/gameService';
 import { isPlacementCorrect } from '../utils/scoringUtils';
 import { addLockedCard, filterIncorrectCards, mergeLockedCards } from '../utils/timelineUtils';
@@ -79,6 +81,7 @@ export function GameScreen() {
   }, [replayCount]);
   const [hasStartedRound, setHasStartedRound] = useState(false);
   const [showCountdownOverlay, setShowCountdownOverlay] = useState(false);
+  const [showNextRoundTimer, setShowNextRoundTimer] = useState(false);
   const [syncStats, setSyncStats] = useState(null);
   const [isSyncInProgress, setIsSyncInProgress] = useState(false);
   
@@ -802,15 +805,22 @@ export function GameScreen() {
 
   /**
    * Reset reveal state and prepare for next round
+   * Automatically starts a 3-second timer before the next round begins
    */
   const handleRevealComplete = useCallback(async () => {
+    // Prevent multiple timer starts
+    if (showNextRoundTimer) {
+      return;
+    }
+    
     setRevealData(null);
-    setPlacedSongs([]);
+    setRevealOverlayShown(false);
     setCurrentSong(null);
     setHasStartedRound(false);
     
-    // Note: Next round will be started by host
-  }, []);
+    // Start the next round timer for all players
+    setShowNextRoundTimer(true);
+  }, [showNextRoundTimer]);
 
   const handleLeaveGame = () => {
     navigate(`/room/${roomCode}`);
@@ -819,6 +829,56 @@ export function GameScreen() {
   const handleStartRound = () => {
     startNewRound();
   };
+
+  /**
+   * Handle next round timer completion
+   * Fetches next song and transitions to playing_snippet state
+   */
+  const handleNextRoundTimerComplete = useCallback(async () => {
+    setShowNextRoundTimer(false);
+    
+    if (!match || !match.id || match.status !== 'active') {
+      return;
+    }
+    
+    try {
+      // Fetch the next song from the catalog
+      const nextSong = await songService.getRandomUnusedSong(match.id);
+      if (!nextSong) {
+        console.error('No songs available for next round');
+        return;
+      }
+      
+      // Transition to playing_snippet state
+      setCurrentSong(nextSong);
+      setHasStartedRound(true);
+      
+      // Only host creates the new round in database
+      if (isHost) {
+        const currentRoundNum = (match.current_round || 1) + 1;
+        const newRound = await roundService.createRound(match.id, currentRoundNum);
+        
+        if (newRound) {
+          setCurrentRoundData(newRound);
+          setCurrentRound(currentRoundNum);
+          
+          // Start synchronized playback
+          const snippetStartMs = (nextSong.snippet_start || 0) * 1000;
+          const snippetDurationMs = (nextSong.snippet_duration || 20) * 1000;
+          
+          await supabase
+            .from('rounds')
+            .update({ started_at: new Date().toISOString() })
+            .eq('id', newRound.id);
+          
+          syncManager.startCountdown(snippetStartMs, snippetDurationMs);
+        }
+      }
+    } catch (error) {
+      console.error('Error starting next round:', error);
+      setError('Failed to start next round');
+    }
+  }, [isHost, match]);
 
   // Drag and drop handlers for timeline
   const handleSongDragStart = (e, song) => {
@@ -961,6 +1021,15 @@ export function GameScreen() {
           />
         )}
 
+        {/* Next Round Timer - shown after reveal before next round starts */}
+        {showNextRoundTimer && (
+          <NextRoundTimer
+            isVisible={showNextRoundTimer}
+            onComplete={handleNextRoundTimerComplete}
+            nextRoundNumber={currentRound + 1}
+          />
+        )}
+
         {/* Song Player Area */}
         <div className="song-player-area">
           <div className="sync-components">
@@ -1032,42 +1101,43 @@ export function GameScreen() {
           <h2>Song Placement Area</h2>
 
           {/* Memoized locked songs from game state for performance */}
-          const lockedSongs = useMemo(() => {
-            const playerGameState = getPlayerGameState(playerId);
-            return (playerGameState?.timeline || []).map(entry => ({
-              id: entry.song_id,
-              song_id: entry.song_id,
-              title: entry.title || 'Unknown Title',
-              artist: entry.artist || 'Unknown Artist',
-              release_year: entry.release_year ?? null,
-              is_locked: entry.is_locked !== false,
-              position: entry.position
-            }));
-          }, [gameStates, playerId]);
+          {(() => {
+            const lockedSongs = useMemo(() => {
+              const playerGameState = getPlayerGameState(playerId);
+              return (playerGameState?.timeline || []).map(entry => ({
+                id: entry.song_id,
+                song_id: entry.song_id,
+                title: entry.title || 'Unknown Title',
+                artist: entry.artist || 'Unknown Artist',
+                release_year: entry.release_year ?? null,
+                is_locked: entry.is_locked !== false,
+                position: entry.position
+              }));
+            }, [gameStates, playerId]);
 
-          {/* Check if current song is already in locked timeline */}
-          const isCurrentSongLocked = useMemo(() => {
-            return lockedSongs.some(song => song.song_id === currentSong?.id);
-          }, [lockedSongs, currentSong?.id]);
+            const isCurrentSongLocked = useMemo(() => {
+              return lockedSongs.some(song => song.song_id === currentSong?.id);
+            }, [lockedSongs, currentSong?.id]);
 
-          {/* Current Song Card - only show if we have a song and it hasn't been placed yet */}
-          {currentSong && !isCurrentSongLocked && !placedSongs.some(s => s.song_id === currentSong.id) && (
-            <div className="current-song-section">
-              <h3>Current Song</h3>
-              <SongCard
-                song={currentSong}
-                onDragStart={handleSongDragStart}
-                className="current-song-card"
-              />
-            </div>
-          )}
+            return (
+              <>
+                {/* Current Song Card - only show if we have a song and it hasn't been placed yet */}
+                {currentSong && !isCurrentSongLocked && !placedSongs.some(s => s.song_id === currentSong.id) && (
+                  <div className="current-song-section">
+                    <h3>Current Song</h3>
+                    <SongCard
+                      song={currentSong}
+                      onDragStart={handleSongDragStart}
+                      className="current-song-card"
+                    />
+                  </div>
+                )}
 
-          {/* Timeline */}
-          <div className="timeline-section">
-            <h3>Your Timeline</h3>
-            <>
-              <YearMarkers songs={lockedSongs} className="timeline-year-markers" />
-              <Timeline
+                {/* Timeline */}
+                <div className="timeline-section">
+                  <h3>Your Timeline</h3>
+                  <YearMarkers songs={lockedSongs} className="timeline-year-markers" />
+                  <Timeline
                     songs={lockedSongs}
                     onSongDrop={handleSongDrop}
                     className="game-timeline"
@@ -1075,13 +1145,16 @@ export function GameScreen() {
                     currentSongId={currentSong?.id}
                     playerResult={revealData?.playerResults?.[playerId]}
                   />
-              <ConfirmButton
-              onConfirm={handleConfirmPlacement}
-              disabled={placedSongs.length === 0 || placementStatus === 'waiting_for_opponent'}
-              isConfirming={placementStatus === 'confirming'}
-            />
-            <WaitingOverlay isVisible={placementStatus === 'waiting_for_opponent'} />
-          </div>
+                  <ConfirmButton
+                    onConfirm={handleConfirmPlacement}
+                    disabled={placedSongs.length === 0 || placementStatus === 'waiting_for_opponent'}
+                    isConfirming={placementStatus === 'confirming'}
+                  />
+                  <WaitingOverlay isVisible={placementStatus === 'waiting_for_opponent'} />
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         <aside className="game-sidebar">

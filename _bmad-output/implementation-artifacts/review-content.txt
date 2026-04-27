@@ -1,0 +1,166 @@
+diff --git a/src/components/NextRoundTimer.jsx b/src/components/NextRoundTimer.jsx
+new file mode 100644
+index 0000000..8b5c123
+--- /dev/null
++++ b/src/components/NextRoundTimer.jsx
+@@ -0,0 +1,81 @@
++import PropTypes from 'prop-types';
++import { useState, useEffect, useCallback } from 'react';
++
++/**
++ * NextRoundTimer component - Displays a 3-second countdown before the next round starts
++ * Shows a visual indicator (shrinking bar or numeric countdown)
++ */
++export function NextRoundTimer({
++  isVisible,
++  onComplete,
++  nextRoundNumber
++}) {
++  const [timeRemaining, setTimeRemaining] = useState(3);
++  const [progress, setProgress] = useState(100);
++
++  const startTimer = useCallback(() => {
++    setTimeRemaining(3);
++    setProgress(100);
++    
++    const timer = setInterval(() => {
++      setTimeRemaining(prev => {
++        const newTime = prev - 1;
++        const newProgress = (newTime / 3) * 100;
++        setProgress(newProgress);
++        
++        if (newTime <= 0) {
++          clearInterval(timer);
++          if (onComplete) {
++            setTimeout(onComplete, 0);
++          }
++          return 0;
++        }
++        return newTime;
++      });
++    }, 1000);
++    
++    return () => clearInterval(timer);
++  }, [onComplete]);
++
++  useEffect(() => {
++    if (isVisible) {
++      const cleanup = startTimer();
++      return cleanup;
++    }
++  }, [isVisible, startTimer]);
++
++  if (!isVisible) return null;
++
++  // Calculate the width of the progress bar based on remaining time
++  const barWidth = `${progress}%`;
++
++  return (
++    <div className="next-round-timer" role="timer" aria-live="polite">
++      <div className="timer-container">
++        <h3 className="timer-title">Next Round Starting...</h3>
++        <p className="round-info">Round {nextRoundNumber}</p>
++        
++        <div className="countdown-bar-container">
++          <div 
++            className="countdown-bar"
++            style={{ width: barWidth }}
++            aria-label={`Countdown progress: ${Math.round(progress)}%`}
++          />
++        </div>
++        
++        <div className="numeric-countdown" aria-label={`Countdown: ${timeRemaining}`}>
++          {timeRemaining}
++        </div>
++      </div>
++    </div>
++  );
++}
++
++NextRoundTimer.propTypes = {
++  isVisible: PropTypes.bool.isRequired,
++  onComplete: PropTypes.func.isRequired,
++  nextRoundNumber: PropTypes.number.isRequired
++};
++
++export default NextRoundTimer;
+
+diff --git a/src/components/GameScreen.jsx b/src/components/GameScreen.jsx
+index 3b8fc08..3015dd9 100644
+--- a/src/components/GameScreen.jsx
++++ b/src/components/GameScreen.jsx
+@@ -19,6 +19,7 @@ import { YearMarkers } from './YearMarkers';
+ import { ConfirmButton } from './ConfirmButton';
+ import { WaitingOverlay } from './WaitingOverlay';
+ import { RevealOverlay } from './RevealOverlay';
++import { NextRoundTimer } from './NextRoundTimer';
+ import { ScoreBoard } from './ScoreBoard';
+ import { gameService } from '../utils/gameService';
+ import { isPlacementCorrect } from '../utils/scoringUtils';
+@@ -79,6 +80,7 @@ export function GameScreen() {
+   }, [replayCount]);
+   const [hasStartedRound, setHasStartedRound] = useState(false);
+   const [showCountdownOverlay, setShowCountdownOverlay] = useState(false);
++  const [showNextRoundTimer, setShowNextRoundTimer] = useState(false);
+   const [syncStats, setSyncStats] = useState(null);
+   const [isSyncInProgress, setIsSyncInProgress] = useState(false);
+   
+@@ -802,6 +804,7 @@ export function GameScreen() {
+ 
+   /**
+    * Reset reveal state and prepare for next round
++   * Automatically starts a 3-second timer before the next round begins
+    */
+   const handleRevealComplete = useCallback(async () => {
+     setRevealData(null);
+@@ -809,8 +812,13 @@ const handleRevealComplete = useCallback(async () => {
+     setCurrentSong(null);
+     setHasStartedRound(false);
+     
+-    // Note: Next round will be started by host
+-  }, []);
++    // Start the next round timer
++    // Only the host will automatically start the next round
++    // Non-hosts will see the timer but the host triggers the start
++    if (isHost) {
++      setShowNextRoundTimer(true);
++    }
++  }, [isHost]);
+ 
+   const handleLeaveGame = () => {
+     navigate(`/room/${roomCode}`);
+@@ -820,6 +828,18 @@ const handleLeaveGame = () => {
+     startNewRound();
+   };
+ 
++  /**
++   * Handle next round timer completion
++   * Automatically starts the next round when the 3-second timer expires
++   */
++  const handleNextRoundTimerComplete = useCallback(() => {
++    setShowNextRoundTimer(false);
++    // Auto-start the next round after the timer
++    if (isHost && match?.id && match.status === 'active') {
++      startNewRound();
++    }
++  }, [isHost, match, startNewRound]);
++
+   // Drag and drop handlers for timeline
+   const handleSongDragStart = (e, song) => {
+     // Block dragging while timer is active
+@@ -961,6 +981,15 @@ export function GameScreen() {
+           />
+         )}
+ 
++        {/* Next Round Timer - shown after reveal before next round starts */}
++        {showNextRoundTimer && (
++          <NextRoundTimer
++            isVisible={showNextRoundTimer}
++            onComplete={handleNextRoundTimerComplete}
++            nextRoundNumber={currentRound + 1}
++          />
++        )}
++
+         {/* Song Player Area */}
+         <div className="song-player-area">
+           <div className="sync-components">
