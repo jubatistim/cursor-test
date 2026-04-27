@@ -252,16 +252,16 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
               {/* Song item - draggable */}
               <div
-                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''} ${revealed && song.id === currentSongId ? (playerResult.isCorrect ? 'correct' : 'incorrect') : ''}`}
-                draggable={!revealed}
-                onDragStart={revealed ? undefined : (e) => handleDragStart(e, song, index)}
-                onDragEnd={revealed ? undefined : handleDragEnd}
-                onTouchStart={revealed ? undefined : (e) => handleTouchStart(e, song, index)}
+                className={`song-item ${draggedSong?.id === song.id ? 'dragging' : ''} ${dropTargetIndex !== null && index >= dropTargetIndex ? 'shift-down' : ''} ${revealed && song.id === currentSongId ? (playerResult.isCorrect ? 'correct' : 'incorrect') : ''} ${song.is_locked ? 'locked' : ''}`}
+                draggable={!revealed && !song.is_locked}
+                onDragStart={revealed || song.is_locked ? undefined : (e) => handleDragStart(e, song, index)}
+                onDragEnd={revealed || song.is_locked ? undefined : handleDragEnd}
+                onTouchStart={revealed || song.is_locked ? undefined : (e) => handleTouchStart(e, song, index)}
                 onKeyDown={(e) => {
                   if (e.key === ' ' || e.key === 'Enter') {
                     e.preventDefault();
                     // Start drag with keyboard
-                    if (!revealed) {
+                    if (!revealed && !song.is_locked) {
                       handleDragStart(
                         { 
                           ...e, 
@@ -278,7 +278,13 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                   }
                 }}
                 role="button"
-                aria-label={revealed ? `${song.title} by ${song.artist} - ${song.id === currentSongId ? (playerResult.isCorrect ? 'Correct' : 'Incorrect') : ''}` : `Drag ${song.title} by ${song.artist}. Press Space or Enter to grab.`}
+                aria-label={
+                  revealed 
+                    ? `${song.title} by ${song.artist} - ${song.id === currentSongId ? (playerResult.isCorrect ? 'Correct' : 'Incorrect') : ''}`
+                    : song.is_locked
+                      ? `${song.title} by ${song.artist} - Locked card, cannot be moved`
+                      : `Drag ${song.title} by ${song.artist}. Press Space or Enter to grab.`
+                }
                 tabIndex={0}
                 aria-grabbed={draggedSong?.id === song.id ? 'true' : 'false'}
               >
@@ -286,6 +292,11 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                   <h4 className="song-title">{song.title}</h4>
                   <p className="song-artist">by {song.artist}</p>
                   <span className="song-year">{song.release_year}</span>
+                  {song.is_locked && !revealed && (
+                    <span className="lock-indicator" title="Locked card - cannot be moved">
+                      🔒
+                    </span>
+                  )}
                   {revealed && song.id === currentSongId && (
                     <span className={`correctness-indicator ${playerResult.isCorrect ? 'correct' : 'incorrect'}`}>
                       {playerResult.isCorrect ? '✓' : '✗'}
@@ -334,9 +345,12 @@ Timeline.propTypes = {
   songs: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string,
+      song_id: PropTypes.string,
       title: PropTypes.string.isRequired,
       artist: PropTypes.string.isRequired,
-      release_year: PropTypes.number
+      release_year: PropTypes.number,
+      is_locked: PropTypes.bool,
+      position: PropTypes.number
     })
   ),
   onSongDrop: PropTypes.func,

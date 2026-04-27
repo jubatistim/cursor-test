@@ -99,4 +99,91 @@ describe('Timeline Component', () => {
     const timeline = screen.getByText('Timeline is empty').closest('.timeline');
     expect(timeline.className).toContain('custom-timeline');
   });
+
+  describe('Locked Card Behavior', () => {
+    const lockedSongs = [
+      { id: '1', title: 'Locked Song', artist: 'Artist One', release_year: 1985, is_locked: true },
+      { id: '2', title: 'Unlocked Song', artist: 'Artist Two', release_year: 1992, is_locked: false }
+    ];
+
+    it('shows lock indicator for locked cards', () => {
+      render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const lockIndicator = screen.getByTitle('Locked card - cannot be moved');
+      expect(lockIndicator).toBeTruthy();
+      expect(lockIndicator.textContent).toBe('🔒');
+    });
+
+    it('applies locked class to locked cards', () => {
+      const { container } = render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const songItems = container.querySelectorAll('.song-item');
+      expect(songItems[0].className).toContain('locked');
+      expect(songItems[1].className).not.toContain('locked');
+    });
+
+    it('prevents dragging of locked cards', () => {
+      const { container } = render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const songItems = container.querySelectorAll('.song-item');
+      const lockedSong = songItems[0];
+      const unlockedSong = songItems[1];
+
+      expect(lockedSong.draggable).toBe(false);
+      expect(unlockedSong.draggable).toBe(true);
+    });
+
+    it('prevents touch events on locked cards', () => {
+      const { container } = render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const songItems = container.querySelectorAll('.song-item');
+      const lockedSong = songItems[0];
+      const unlockedSong = songItems[1];
+
+      // Check that locked cards are not draggable via touch
+      expect(lockedSong.getAttribute('draggable')).toBe('false');
+      expect(unlockedSong.getAttribute('draggable')).toBe('true');
+    });
+
+    it('shows correct aria-label for locked cards', () => {
+      render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const lockedSong = screen.getByText('Locked Song').closest('.song-item');
+      expect(lockedSong.getAttribute('aria-label')).toContain('Locked card, cannot be moved');
+    });
+
+    it('shows correct aria-label for unlocked cards', () => {
+      render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const unlockedSong = screen.getByText('Unlocked Song').closest('.song-item');
+      expect(unlockedSong.getAttribute('aria-label')).toContain('Drag Unlocked Song');
+    });
+
+    it('locks all cards when revealed is true', () => {
+      const { container } = render(
+        <Timeline 
+          songs={mockSongs} 
+          onSongDrop={mockOnSongDrop} 
+          revealed={true}
+          currentSongId="1"
+          playerResult={{ isCorrect: true }}
+        />
+      );
+
+      const songItems = container.querySelectorAll('.song-item');
+      songItems.forEach(item => {
+        expect(item.draggable).toBe(false);
+      });
+    });
+
+    it('prevents keyboard interaction on locked cards', () => {
+      const { container } = render(<Timeline songs={lockedSongs} onSongDrop={mockOnSongDrop} />);
+
+      const lockedSong = container.querySelector('.song-item.locked');
+      
+      // Verify locked card has correct accessibility attributes
+      expect(lockedSong.getAttribute('aria-grabbed')).toBe('false');
+      expect(lockedSong.getAttribute('aria-label')).toContain('Locked card, cannot be moved');
+    });
+  });
 });

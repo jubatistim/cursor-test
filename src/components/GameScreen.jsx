@@ -22,6 +22,7 @@ import { RevealOverlay } from './RevealOverlay';
 import { ScoreBoard } from './ScoreBoard';
 import { gameService } from '../utils/gameService';
 import { isPlacementCorrect } from '../utils/scoringUtils';
+import { addLockedCard, filterIncorrectCards, mergeLockedCards } from '../utils/timelineUtils';
 
 /**
  * GameScreen component - Main game interface
@@ -228,6 +229,9 @@ export function GameScreen() {
       const gameStatesData = await matchService.getAllGameStates(matchData.id);
       setGameStates(gameStatesData);
 
+      // Sync timeline state for reconnection scenarios
+      await syncTimelineState(gameStatesData);
+
       // Load current round data
       await loadCurrentRoundData(matchData.id);
 
@@ -238,6 +242,52 @@ export function GameScreen() {
       setLoading(false);
     }
   }, [roomCode]);
+
+  /**
+   * Sync timeline state for reconnection scenarios
+   * Ensures timeline persistence across page refreshes and reconnections
+   */
+  const syncTimelineState = useCallback(async (gameStatesData) => {
+    if (!playerId) return;
+
+    try {
+      const playerGameState = gameStatesData.find(gs => gs.player_id === playerId);
+      if (playerGameState && playerGameState.timeline) {
+        console.log('Syncing timeline state for reconnection:', playerGameState.timeline);
+        
+        // Validate timeline structure and ensure locked cards are properly marked
+        const validatedTimeline = playerGameState.timeline.map(entry => ({
+          ...entry,
+          is_locked: entry.is_locked !== false // Default to true for backward compatibility
+        }));
+        
+        // Update local state with validated timeline
+        setPlacedSongs(validatedTimeline.map(entry => ({
+          id: entry.song_id,
+          song_id: entry.song_id,
+          title: entry.title || 'Unknown Title',
+          artist: entry.artist || 'Unknown Artist',
+          release_year: entry.release_year || null,
+          is_locked: entry.is_locked !== false,
+          position: entry.position
+        })));
+        
+        // Update game state if validation changed data
+        if (JSON.stringify(playerGameState.timeline) !== JSON.stringify(validatedTimeline)) {
+          await supabase
+            .from('game_states')
+            .update({
+              timeline: validatedTimeline,
+              updated_at: new Date().toISOString()
+            })
+            .eq('match_id', playerGameState.match_id)
+            .eq('player_id', playerId);
+        }
+      }
+    } catch (err) {
+      console.error('Error syncing timeline state:', err);
+    }
+  }, [playerId]);
 
   const loadCurrentRoundData = useCallback(async (matchId) => {
     try {
@@ -521,7 +571,7 @@ export function GameScreen() {
 
     matchChannelRef.current = matchChannel;
 
-    // Subscribe to game state changes
+    // Subscribe to game state changes with enhanced timeline sync
     const gameStateChannel = supabase
       .channel('game_state_updates_' + roomId)
       .on(
@@ -534,6 +584,27 @@ export function GameScreen() {
         },
         (payload) => {
           loadMatchData();
+          
+          // Enhanced timeline sync for reconnection scenarios
+          if (payload.eventType === 'UPDATE' && payload.new.player_id === playerId) {
+            const updatedTimeline = payload.new.timeline || [];
+            console.log('Timeline updated via real-time:', updatedTimeline);
+            
+            // Update local state with new timeline
+            const currentGameState = getPlayerGameState(playerId);
+            if (currentGameState && JSON.stringify(currentGameState.timeline) !== JSON.stringify(updatedTimeline)) {
+              console.log('Syncing timeline from real-time update');
+              setPlacedSongs(updatedTimeline.map(entry => ({
+                id: entry.song_id,
+                song_id: entry.song_id,
+                title: entry.title || 'Unknown Title',
+                artist: entry.artist || 'Unknown Artist',
+                release_year: entry.release_year || null,
+                is_locked: entry.is_locked !== false,
+                position: entry.position
+              })));
+            }
+          }
         }
       )
       .subscribe();
@@ -656,7 +727,7 @@ export function GameScreen() {
 
   /**
    * Trigger reveal phase - calculate correctness for all players
-   * and prepare reveal data
+   * and prepare reveal data, then lock correct placements
    */
   const triggerReveal = useCallback(async () => {
     if (!match?.id || !currentSong?.id || !currentRoundData?.id) {
@@ -664,24 +735,50 @@ export function GameScreen() {
       return;
     }
     
-    // Calculate correctness for each player
     const playerResults = {};
     
-    for (const player of players) {
+    // Process all players in parallel
+    const updatePromises = players.map(async (player) => {
       const gameState = getPlayerGameState(player.id);
-      if (gameState) {
-        const result = calculatePlacementCorrectness(gameState, currentSong.id);
-        playerResults[player.id] = result;
-        
-        // Update correct_placements count if placement was correct
-        if (result.isCorrect) {
-          try {
-            await matchService.incrementCorrectPlacements(match.id, player.id);
-          } catch (err) {
-            console.error('Error updating correct placements:', err);
-          }
+      if (!gameState) return;
+      
+      const result = calculatePlacementCorrectness(gameState, currentSong.id);
+      playerResults[player.id] = result;
+      
+      // Track correctness per player - each player only keeps their own correct songs
+      const correctForThisPlayer = result.isCorrect ? [currentSong.id] : [];
+      
+      // Update score for correct placements
+      if (result.isCorrect) {
+        try {
+          await matchService.incrementCorrectPlacements(match.id, player.id);
+        } catch (err) {
+          console.error('Error updating correct placements:', err);
         }
       }
+      
+      // Update timeline - lock correct, discard incorrect
+      try {
+        const currentTimeline = gameState.timeline || [];
+        const updatedTimeline = filterIncorrectCards(currentTimeline, correctForThisPlayer);
+        
+        await supabase
+          .from('game_states')
+          .update({
+            timeline: updatedTimeline,
+            updated_at: new Date().toISOString()
+          })
+          .eq('match_id', match.id)
+          .eq('player_id', player.id);
+      } catch (err) {
+        console.error('Error updating player timeline:', err);
+      }
+    });
+    
+    try {
+      await Promise.all(updatePromises);
+    } catch (err) {
+      console.error('Error in round resolution:', err);
     }
     
     // Set reveal data
@@ -934,8 +1031,27 @@ export function GameScreen() {
         <div className="game-area">
           <h2>Song Placement Area</h2>
 
-          {/* Current Song Card - only show if we have a song and it hasn't been placed */}
-          {currentSong && !placedSongs.some(s => s.id === currentSong.id) && (
+          {/* Memoized locked songs from game state for performance */}
+          const lockedSongs = useMemo(() => {
+            const playerGameState = getPlayerGameState(playerId);
+            return (playerGameState?.timeline || []).map(entry => ({
+              id: entry.song_id,
+              song_id: entry.song_id,
+              title: entry.title || 'Unknown Title',
+              artist: entry.artist || 'Unknown Artist',
+              release_year: entry.release_year ?? null,
+              is_locked: entry.is_locked !== false,
+              position: entry.position
+            }));
+          }, [gameStates, playerId]);
+
+          {/* Check if current song is already in locked timeline */}
+          const isCurrentSongLocked = useMemo(() => {
+            return lockedSongs.some(song => song.song_id === currentSong?.id);
+          }, [lockedSongs, currentSong?.id]);
+
+          {/* Current Song Card - only show if we have a song and it hasn't been placed yet */}
+          {currentSong && !isCurrentSongLocked && !placedSongs.some(s => s.song_id === currentSong.id) && (
             <div className="current-song-section">
               <h3>Current Song</h3>
               <SongCard
@@ -949,16 +1065,17 @@ export function GameScreen() {
           {/* Timeline */}
           <div className="timeline-section">
             <h3>Your Timeline</h3>
-            <YearMarkers songs={placedSongs} className="timeline-year-markers" />
-            <Timeline
-              songs={placedSongs}
-              onSongDrop={handleSongDrop}
-              className="game-timeline"
-              revealed={!!revealData}
-              currentSongId={currentSong?.id}
-              playerResult={revealData?.playerResults?.[playerId]}
-            />
-            <ConfirmButton
+            <>
+              <YearMarkers songs={lockedSongs} className="timeline-year-markers" />
+              <Timeline
+                    songs={lockedSongs}
+                    onSongDrop={handleSongDrop}
+                    className="game-timeline"
+                    revealed={!!revealData}
+                    currentSongId={currentSong?.id}
+                    playerResult={revealData?.playerResults?.[playerId]}
+                  />
+              <ConfirmButton
               onConfirm={handleConfirmPlacement}
               disabled={placedSongs.length === 0 || placementStatus === 'waiting_for_opponent'}
               isConfirming={placementStatus === 'confirming'}

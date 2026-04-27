@@ -576,6 +576,27 @@ p { margin: 0; }
   .song-item.incorrect {
     border-left: 4px solid #f87171;
   }
+
+  /* Locked card state */
+  .song-item.locked {
+    opacity: 0.8;
+    background: var(--code-bg);
+    border-color: var(--border);
+    cursor: not-allowed;
+  }
+
+  .song-item.locked:hover {
+    box-shadow: none;
+    border-color: var(--border);
+    transform: none;
+  }
+
+  .lock-indicator {
+    display: inline-block;
+    margin-left: 0.5rem;
+    font-size: 0.875rem;
+    opacity: 0.7;
+  }
 }
 
 .error-message {
