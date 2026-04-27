@@ -165,4 +165,5 @@ describe('SongCard Component', () => {
       expect(songCard.getAttribute('aria-grabbed')).toBe('true');
     });
   });
-});
+
+  });

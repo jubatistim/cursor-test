@@ -174,9 +174,22 @@ export function isDesktopDevice() {
 export function supportsTouch() {
   if (typeof window === 'undefined') return false;
   if (typeof navigator === 'undefined') return false;
-  // Check for touch support, but prioritize desktop experience on hybrid devices
+  // Check for touch support - support hybrid devices (touch + mouse)
+  // A device can have both touch and fine pointer (e.g., Microsoft Surface)
   const hasTouch = 'ontouchstart' in window || (navigator.maxTouchPoints > 0);
-  return hasTouch && !isDesktopDevice();
+  return hasTouch;
+}
+
+/**
+ * Check if device is primarily touch-based (no hover or coarse pointer)
+ * @returns {boolean} Whether device is touch-primary
+ */
+export function isTouchPrimaryDevice() {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia !== 'function') return false;
+  // Touch-primary devices don't have hover or fine pointer
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches ||
+         (supportsTouch() && !isDesktopDevice());
 }
 
 /**

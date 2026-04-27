@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { createDragImage, cleanupDragImage, supportsTouch, getDragEventHandlers, isDesktopDevice as checkIsDesktopDevice } from '../utils/dragUtils';
+import { createDragImage, cleanupDragImage, supportsTouch, isTouchPrimaryDevice, getDragEventHandlers, isDesktopDevice as checkIsDesktopDevice } from '../utils/dragUtils';
 
 /**
  * SongCard component - Draggable song card for timeline placement
@@ -14,54 +14,213 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
   }
 
   const [isDragging, setIsDragging] = useState(false);
+  const [touchStartPos, setTouchStartPos] = useState(null);
   const dragImageRef = useRef(null);
   const cardRef = useRef(null);
+  const touchDragDataRef = useRef(null);
 
-  const handleDragStart = useCallback((e) => {
+  // CONSTANTS for touch drag threshold and timing
+  const TOUCH_DRAG_THRESHOLD = 10; // pixels to move before considering it a drag
+  const LONG_PRESS_THRESHOLD = 300; // ms for long press to initiate drag
+
+  const isTouchDevice = supportsTouch();
+  const isTouchPrimary = isTouchPrimaryDevice();
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (dragImageRef.current) {
+        cleanupDragImage(dragImageRef.current);
+        dragImageRef.current = null;
+      }
+    };
+  }, []);
+
+  const prepareDragData = useCallback((songData) => {
+    // Create sanitized drag data
+    return JSON.stringify({
+      songId: songData.id,
+      songTitle: songData.title,
+      songArtist: songData.artist
+    });
+  }, []);
+
+  const handleDragStart = useCallback((e, isTouch = false) => {
     if (onDragStart) {
-      onDragStart(e, song);
+      // For touch, create a proper event-like object
+      const eventForCallback = isTouch ? { 
+        ...e,
+        dataTransfer: {
+          effectAllowed: 'move',
+          setData: (format, data) => {
+            touchDragDataRef.current = data;
+          },
+          getData: () => touchDragDataRef.current || '{}'
+        }
+      } : e;
+      onDragStart(eventForCallback, song);
     }
     setIsDragging(true);
     
-    if (e.dataTransfer) {
+    if (e.dataTransfer && !isTouch) {
       e.dataTransfer.effectAllowed = 'move';
-      // Use minimal, sanitized data to prevent XSS
-      e.dataTransfer.setData('text/plain', JSON.stringify({
-        songId: song.id,
-        songTitle: song.title,
-        songArtist: song.artist
-      }));
+      e.dataTransfer.setData('text/plain', prepareDragData(song));
       
       // Create custom drag image for better UX
       if (cardRef.current) {
         dragImageRef.current = createDragImage(cardRef.current, e);
       }
     }
-  }, [onDragStart, song]);
+    
+    // For touch devices, store the drag data
+    if (isTouch) {
+      touchDragDataRef.current = prepareDragData(song);
+    }
+  }, [onDragStart, song, prepareDragData]);
 
-  const handleDragEnd = useCallback(() => {
+  const handleDragEnd = useCallback((e, isTouch = false) => {
     setIsDragging(false);
+    setTouchStartPos(null);
+    touchDragDataRef.current = null;
+    
     // Clean up drag image
     if (dragImageRef.current) {
       cleanupDragImage(dragImageRef.current);
       dragImageRef.current = null;
     }
+    
+    // Haptic feedback on touch end
+    if (isTouch && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(10);
+      } catch (err) {
+        // Vibration may not be allowed
+        console.debug('Vibration not available:', err);
+      }
+    }
   }, []);
 
   const handleTouchStart = useCallback((e) => {
-    // Create synthetic event for touch
-    const syntheticEvent = {
-      ...e,
-      dataTransfer: {
-        effectAllowed: 'move',
-        setData: (format, data) => {
-          // Store in custom property for touch drag
-          e.target._dragData = data;
+    if (revealed) return; // Don't handle touch on revealed cards
+    
+    // Handle both native touch events and synthetic events
+    let touchX, touchY;
+    if (e.touches && e.touches.length > 0) {
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+    } else if (e.nativeEvent && e.nativeEvent.touches && e.nativeEvent.touches.length > 0) {
+      // Testing library synthetic events
+      touchX = e.nativeEvent.touches[0].clientX;
+      touchY = e.nativeEvent.touches[0].clientY;
+    } else {
+      // Fallback: use clientX/clientY directly if available
+      touchX = e.clientX || 0;
+      touchY = e.clientY || 0;
+    }
+    
+    // Record start position and time
+    setTouchStartPos({
+      x: touchX,
+      y: touchY,
+      time: Date.now()
+    });
+    
+    // Start long press timer
+    const longPressTimer = setTimeout(() => {
+      // If still touching after threshold, start drag
+      if (touchStartPos) {
+        e.preventDefault();
+        handleDragStart(e, true);
+      }
+    }, LONG_PRESS_THRESHOLD);
+    
+    // Store timer for cleanup
+    cardRef.current._longPressTimer = longPressTimer;
+    
+    e.preventDefault();
+  }, [handleDragStart, touchStartPos, revealed]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (revealed) return;
+    
+    // Handle both native touch events and synthetic events
+    let touchX, touchY;
+    if (e.touches && e.touches.length > 0) {
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+    } else if (e.nativeEvent && e.nativeEvent.touches && e.nativeEvent.touches.length > 0) {
+      // Testing library synthetic events
+      touchX = e.nativeEvent.touches[0].clientX;
+      touchY = e.nativeEvent.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      // For touchend events
+      touchX = e.changedTouches[0].clientX;
+      touchY = e.changedTouches[0].clientY;
+    } else {
+      // Fallback: use clientX/clientY directly if available
+      touchX = e.clientX || 0;
+      touchY = e.clientY || 0;
+    }
+    
+    const startPos = touchStartPos;
+    
+    if (startPos) {
+      const dx = Math.abs(touchX - startPos.x);
+      const dy = Math.abs(touchY - startPos.y);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // If moved beyond threshold, start drag
+      if (distance > TOUCH_DRAG_THRESHOLD && !isDragging) {
+        e.preventDefault();
+        handleDragStart(e, true);
+        // Clear long press timer
+        if (cardRef.current?._longPressTimer) {
+          clearTimeout(cardRef.current._longPressTimer);
+          cardRef.current._longPressTimer = null;
         }
       }
-    };
-    handleDragStart(syntheticEvent);
-  }, [handleDragStart]);
+      
+      // Once dragging, prevent default to stop scrolling
+      if (isDragging) {
+        e.preventDefault();
+      }
+    }
+  }, [isDragging, touchStartPos, handleDragStart, revealed]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (revealed) return;
+    
+    // Clear long press timer
+    if (cardRef.current?._longPressTimer) {
+      clearTimeout(cardRef.current._longPressTimer);
+      cardRef.current._longPressTimer = null;
+    }
+    
+    // Only consider it a drag if we moved beyond threshold or started via long press
+    if (isDragging) {
+      e.preventDefault();
+      handleDragEnd(e, true);
+    }
+    
+    setTouchStartPos(null);
+  }, [isDragging, handleDragEnd, revealed]);
+
+  const handleTouchCancel = useCallback((e) => {
+    if (revealed) return;
+    
+    // Clean up on cancel
+    if (cardRef.current?._longPressTimer) {
+      clearTimeout(cardRef.current._longPressTimer);
+      cardRef.current._longPressTimer = null;
+    }
+    
+    if (isDragging) {
+      handleDragEnd(e, true);
+    }
+    
+    setTouchStartPos(null);
+    setIsDragging(false);
+  }, [isDragging, handleDragEnd, revealed]);
 
   // Keyboard support - Space/Enter to start drag
   const handleKeyDown = useCallback((e) => {
@@ -88,7 +247,6 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
 
   // Get appropriate event handlers based on device
   const dragHandlers = getDragEventHandlers();
-  const isTouchDevice = supportsTouch();
   const isDesktop = checkIsDesktopDevice();
 
   // Determine status badge text
@@ -103,12 +261,14 @@ export function SongCard({ song, onDragStart, className = '', revealed = false, 
   return (
     <div
       ref={cardRef}
-      className={`song-card ${className} ${isDragging ? 'dragging' : ''} ${revealed ? 'revealed' : ''} ${isCorrect === true ? 'correct' : ''} ${isCorrect === false ? 'incorrect' : ''} ${isDesktop && !revealed ? 'desktop-hover' : ''}`}
+      className={`song-card ${className} ${isDragging ? 'dragging' : ''} ${revealed ? 'revealed' : ''} ${isCorrect === true ? 'correct' : ''} ${isCorrect === false ? 'incorrect' : ''} ${isDesktop && !revealed ? 'desktop-hover' : ''} ${isTouchPrimary ? 'touch-device' : ''}`}
       draggable={isDesktop && !revealed}
       onDragStart={isDesktop && !revealed ? handleDragStart : undefined}
       onDragEnd={isDesktop && !revealed ? handleDragEnd : undefined}
       onTouchStart={isTouchDevice && !revealed ? handleTouchStart : undefined}
-      onTouchEnd={isTouchDevice && !revealed ? handleDragEnd : undefined}
+      onTouchMove={isTouchDevice && !revealed ? handleTouchMove : undefined}
+      onTouchEnd={isTouchDevice && !revealed ? handleTouchEnd : undefined}
+      onTouchCancel={isTouchDevice && !revealed ? handleTouchCancel : undefined}
       onKeyDown={!revealed ? handleKeyDown : undefined}
       role="button"
       aria-label={revealed 

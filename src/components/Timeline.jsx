@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { supportsTouch, getDragEventHandlers, handleKeyboardNavigation, getDropTargetIndex, createDragImage, cleanupDragImage, isDesktopDevice as checkIsDesktopDevice } from '../utils/dragUtils';
+import { supportsTouch, isTouchPrimaryDevice, getDragEventHandlers, handleKeyboardNavigation, getDropTargetIndex, createDragImage, cleanupDragImage, isDesktopDevice as checkIsDesktopDevice } from '../utils/dragUtils';
 
 import { DragPreview } from './DragPreview';
 
@@ -15,6 +15,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
   const [isTouchDragging, setIsTouchDragging] = useState(false);
   const [touchDragIndex, setTouchDragIndex] = useState(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [touchStartPos, setTouchStartPos] = useState(null);
   
   const timelineRef = useRef(null);
   const touchStartY = useRef(null);
@@ -23,6 +24,10 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
   const isTouchDevice = supportsTouch();
   const isDesktopDevice = checkIsDesktopDevice();
+  const isTouchPrimary = isTouchPrimaryDevice();
+
+  // Constants for touch handling
+  const TOUCH_DRAG_THRESHOLD = 10; // pixels
 
   // Cleanup on unmount
   useEffect(() => {
@@ -31,11 +36,26 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
         cleanupDragImage(dragImageRef.current);
         dragImageRef.current = null;
       }
+      // Clean up touch dragging body class
+      document.body.classList.remove('touch-dragging', 'no-scroll');
     };
   }, []);
 
+  // Manage body class for touch dragging (prevent scrolling)
+  useEffect(() => {
+    if (isTouchDragging) {
+      document.body.classList.add('touch-dragging', 'no-scroll');
+    } else {
+      document.body.classList.remove('touch-dragging', 'no-scroll');
+    }
+    return () => {
+      document.body.classList.remove('touch-dragging', 'no-scroll');
+    };
+  }, [isTouchDragging]);
+
   // Handle drag start for mouse
   const handleDragStart = (e, song, index) => {
+    if (revealed) return;
     setDraggedSong({ ...song, originalIndex: index });
     e.dataTransfer.effectAllowed = 'move';
     // Use sanitized, minimal data to prevent XSS
@@ -49,32 +69,101 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
 
   // Handle touch start for mobile
   const handleTouchStart = (e, song, index) => {
-    touchStartY.current = e.touches[0].clientY;
-    touchStartTime.current = Date.now();
-    setDraggedSong({ ...song, originalIndex: index });
-    setIsTouchDragging(true);
-    setTouchDragIndex(index);
+    if (revealed) return;
+    
     e.preventDefault();
+    e.stopPropagation();
+    
+    // Handle both native touch events and synthetic events
+    let touchX, touchY;
+    if (e.touches && e.touches.length > 0) {
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+    } else if (e.nativeEvent && e.nativeEvent.touches && e.nativeEvent.touches.length > 0) {
+      touchX = e.nativeEvent.touches[0].clientX;
+      touchY = e.nativeEvent.touches[0].clientY;
+    } else {
+      touchX = e.clientX || 0;
+      touchY = e.clientY || 0;
+    }
+    
+    touchStartY.current = touchY;
+    touchStartTime.current = Date.now();
+    
+    // Store start position for threshold check
+    setTouchStartPos({ x: touchX, y: touchY });
+    
+    // Don't start drag yet - wait for move threshold
+    // Just store the song info for potential drag
+    setDraggedSong({ ...song, originalIndex: index });
   };
 
   // Handle touch move for mobile
   const handleTouchMove = (e) => {
-    if (!isTouchDragging || !timelineRef.current) return;
+    if (!timelineRef.current) return;
+    
     e.preventDefault();
+    e.stopPropagation();
 
-    const touchY = e.touches[0].clientY;
-    const targetIndex = getDropTargetIndex({ clientY: touchY }, timelineRef.current, songs);
-    setDropTargetIndex(targetIndex);
-    setMousePosition({ x: e.touches[0].clientX, y: touchY });
+    // Handle both native touch events and synthetic events
+    let touchX, touchY;
+    if (e.touches && e.touches.length > 0) {
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+    } else if (e.nativeEvent && e.nativeEvent.touches && e.nativeEvent.touches.length > 0) {
+      touchX = e.nativeEvent.touches[0].clientX;
+      touchY = e.nativeEvent.touches[0].clientY;
+    } else {
+      touchX = e.clientX || 0;
+      touchY = e.clientY || 0;
+    }
+    
+    const startPos = touchStartPos;
+    
+    // Check if we've passed the drag threshold
+    if (startPos && !isTouchDragging) {
+      const dy = Math.abs(touchY - startPos.y);
+      const dx = Math.abs(touchX - startPos.x);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance > TOUCH_DRAG_THRESHOLD) {
+        setIsTouchDragging(true);
+        setTouchDragIndex(draggedSong?.originalIndex || 0);
+      }
+    }
+    
+    if (isTouchDragging) {
+      const targetIndex = getDropTargetIndex({ clientY: touchY }, timelineRef.current, songs);
+      setDropTargetIndex(targetIndex);
+      setMousePosition({ x: touchX, y: touchY });
+    }
   };
 
   // Handle touch end for mobile
   const handleTouchEnd = (e) => {
-    if (!isTouchDragging) return;
+    if (!isTouchDragging && !draggedSong) return;
 
-    const touch = e.changedTouches[0];
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Handle both native touch events and synthetic events
+    let touchX, touchY;
+    if (e.changedTouches && e.changedTouches.length > 0) {
+      touchX = e.changedTouches[0].clientX;
+      touchY = e.changedTouches[0].clientY;
+    } else if (e.nativeEvent && e.nativeEvent.changedTouches && e.nativeEvent.changedTouches.length > 0) {
+      touchX = e.nativeEvent.changedTouches[0].clientX;
+      touchY = e.nativeEvent.changedTouches[0].clientY;
+    } else if (e.touches && e.touches.length > 0) {
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+    } else {
+      touchX = e.clientX || 0;
+      touchY = e.clientY || 0;
+    }
+
     const targetIndex = timelineRef.current
-      ? getDropTargetIndex({ clientY: touch.clientY }, timelineRef.current, songs)
+      ? getDropTargetIndex({ clientY: touchY }, timelineRef.current, songs)
       : 0;
 
     if (draggedSong && onSongDrop) {
@@ -86,6 +175,23 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
     setDraggedSong(null);
     setDropTargetIndex(null);
     setTouchDragIndex(null);
+    setTouchStartPos(null);
+    touchStartY.current = null;
+    touchStartTime.current = null;
+  };
+
+  // Handle touch cancel
+  const handleTouchCancel = (e) => {
+    if (!isTouchDragging && !draggedSong) return;
+    
+    e.preventDefault();
+    
+    // Reset state
+    setIsTouchDragging(false);
+    setDraggedSong(null);
+    setDropTargetIndex(null);
+    setTouchDragIndex(null);
+    setTouchStartPos(null);
     touchStartY.current = null;
     touchStartTime.current = null;
   };
@@ -197,10 +303,11 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
   return (
     <div 
       ref={timelineRef}
-      className={`timeline ${className}`}
+      className={`timeline ${className} ${isTouchPrimary ? 'touch-primary' : ''}`}
       role="list"
       aria-label="Song timeline"
       onTouchMove={isTouchDevice ? handleTouchMove : undefined}
+      onTouchCancel={isTouchDevice ? handleTouchCancel : undefined}
       onKeyDown={handleKeyDown}
       tabIndex={0}
     >
@@ -227,6 +334,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                 handleTouchEnd(e);
               }
             }}
+            onTouchCancel={isTouchDevice ? handleTouchCancel : undefined}
             onKeyDown={(e) => handleDropZoneKeyDown(e, 0)}
             role="button"
             aria-label="Drop zone for empty timeline. Press Space or Enter to insert here."
@@ -267,6 +375,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                     handleTouchEnd(e);
                   }
                 }}
+                onTouchCancel={isTouchDevice ? handleTouchCancel : undefined}
                 onKeyDown={(e) => handleDropZoneKeyDown(e, index)}
                 role="button"
                 aria-label={`Drop zone before ${song.title}. Press Space or Enter to insert here.`}
@@ -287,6 +396,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                 onDragStart={revealed || song.is_locked ? undefined : (e) => handleDragStart(e, song, index)}
                 onDragEnd={revealed || song.is_locked ? undefined : handleDragEnd}
                 onTouchStart={revealed || song.is_locked ? undefined : (e) => handleTouchStart(e, song, index)}
+                onTouchCancel={revealed || song.is_locked ? undefined : isTouchDevice ? handleTouchCancel : undefined}
                 onKeyDown={(e) => {
                   if (e.key === ' ' || e.key === 'Enter') {
                     e.preventDefault();
@@ -353,6 +463,7 @@ export function Timeline({ songs = [], onSongDrop, className = '', showYearMarke
                 handleTouchEnd(e);
               }
             }}
+            onTouchCancel={isTouchDevice ? handleTouchCancel : undefined}
             onKeyDown={(e) => handleDropZoneKeyDown(e, songs.length)}
             role="button"
             aria-label="Drop zone at end. Press Space or Enter to insert here."

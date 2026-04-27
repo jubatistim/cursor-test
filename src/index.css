@@ -588,6 +588,114 @@ p { margin: 0; }
   margin: 0 auto;
 }
 
+/* Touch Device Body States */
+body.touch-dragging,
+body.no-scroll {
+  overflow: hidden;
+  touch-action: none;
+  -webkit-overflow-scrolling: touch;
+  position: fixed;
+  width: 100%;
+}
+
+/* Touch Primary Device - Full Touch Support */
+@media (hover: none) and (pointer: coarse) {
+  .song-card,
+  .song-item,
+  .drop-zone {
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Ensure minimum touch target size of 44x44px for iOS/Android standards */
+  .song-card {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 1rem;
+    touch-action: manipulation;
+  }
+  
+  .song-item {
+    min-height: 44px;
+    padding: 1rem;
+    touch-action: manipulation;
+  }
+  
+  .drop-zone {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  
+  .confirm-button,
+  .copy-button,
+  .leave-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 24px;
+    touch-action: manipulation;
+  }
+  
+  /* Visual feedback for touch interactions */
+  .song-card:active,
+  .song-item:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+  
+  /* Prevent default touch behaviors */
+  .timeline {
+    touch-action: manipulation;
+    overflow: hidden;
+  }
+}
+
+/* Hybrid Touch Devices (touch + mouse/keyboard like Surface) */
+@media (pointer: fine) and (hover: hover) {
+  /* Still support touch if available */
+  .song-card[touch-action],
+  .song-item[touch-action],
+  .drop-zone[touch-action] {
+    touch-action: manipulation;
+  }
+}
+  
+  .confirm-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 24px;
+    touch-action: manipulation;
+  }
+  
+  .copy-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 24px;
+    touch-action: manipulation;
+  }
+  
+  .leave-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 24px;
+    touch-action: manipulation;
+  }
+  
+  /* Prevent text selection during touch interactions */
+  .song-card,
+  .song-item,
+  .drop-zone {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .game-main {

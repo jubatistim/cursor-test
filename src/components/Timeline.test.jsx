@@ -5,6 +5,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 vi.mock('../utils/dragUtils', () => ({
   supportsTouch: () => false,
   isDesktopDevice: () => true,
+  isTouchPrimaryDevice: () => false,
   getDragEventHandlers: () => ({
     dragStart: 'dragstart',
     dragMove: 'dragover',
