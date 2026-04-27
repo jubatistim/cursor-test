@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { checkWinCondition } from './winDetectionUtils';
 
 /**
  * Game service - placement confirmation and opponent sync
@@ -181,5 +182,85 @@ export const gameService = {
     }
 
     return data;
+  },
+
+  /**
+   * Mark a match as finished and update game_states to finished status.
+   * Allows clients listening to Supabase to transition out of game loop.
+   * @param {string} matchId
+   * @param {string} winner - 'player_1', 'player_2', or 'draw'
+   * @returns {Promise<Array>} Updated game states
+   */
+  async markMatchFinished(matchId, winner) {
+    if (!matchId) {
+      throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
+    }
+
+    if (!winner || !['player_1', 'player_2', 'draw'].includes(winner)) {
+      throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
+    }
+
+    // Check if match is already finished to prevent redundant operations
+    const { data: existingData, error: fetchError } = await supabase
+      .from('game_states')
+      .select('match_status, winner')
+      .eq('match_id', matchId)
+      .single();
+
+    if (fetchError) {
+      console.error('markMatchFinished fetch error:', fetchError);
+      throw new Error(SANITIZED_ERRORS.SAVE_FAILED);
+    }
+
+    if (existingData && existingData.match_status === 'finished') {
+      // Match is already finished, no need to update
+      return existingData;
+    }
+
+    const { data, error } = await supabase
+      .from('game_states')
+      .update({
+        match_status: 'finished',
+        winner,
+        updated_at: new Date().toISOString()
+      })
+      .eq('match_id', matchId)
+      .select();
+
+          winner,
+          finished_at: new Date().toISOString()
+        },
+        created_at: new Date().toISOString()
+      })
+      .select();
+
+    if (notificationError) {
+      console.error('Failed to emit match finished notification:', notificationError);
+      // Don't fail the operation if notification fails
+    }
+
+    return data;
+  },
+
+  /**
+   * Check win condition after score update and automatically transition match to finished if won.
+   * This is called after each score is saved to immediately detect and mark wins.
+   * @param {string} matchId
+   * @param {number} playerNumber - 1 or 2
+   * @param {number} player1Score - Current player 1 score
+   * @param {number} player2Score - Current player 2 score
+   * @returns {Promise<Object>} { winState: {isWinState, winner}, matchFinished: boolean }
+   */
+  async checkAndApplyWinCondition(matchId, playerNumber, player1Score, player2Score) {
+    if (!matchId) {
+      throw new Error(SANITIZED_ERRORS.INVALID_PARAMS);
+    }
+      matchFinished = true;
+    }
+
+    return {
+      winState,
+      matchFinished
+    };
   }
 };

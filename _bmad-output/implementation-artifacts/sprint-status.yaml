@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: '2026-04-26T01:40:00-03:00'
-last_updated: '2026-04-26T22:20:00-03:00'
+last_updated: '2026-04-27T08:45:00-03:00'
 project: 'Hitster Web'
 project_key: 'NOKEY'
 tracking_system: 'file-system'
@@ -78,7 +78,7 @@ development_status:
 
   # Epic 6: Match Management
   epic-6: in-progress
-  6-1-win-detection: ready-for-dev
+  6-1-win-detection: done
   6-2-end-screen: ready-for-dev
   6-3-rematch: ready-for-dev
   epic-6-retrospective: optional
