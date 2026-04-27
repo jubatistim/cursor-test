@@ -69,12 +69,12 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Round Resolution
-  epic-5: in-progress
+  epic-5: done
   5-1-reveal-correctness: done
   5-2-lock-correct-placements: done
   5-3-next-round-transition: done
-  5-4-timeout-handling: review
-  epic-5-retrospective: optional
+  5-4-timeout-handling: done
+  epic-5-retrospective: done
 
   # Epic 6: Match Management
   epic-6: in-progress
